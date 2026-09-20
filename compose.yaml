@@ -1,0 +1,62 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Copy .env.example to .env first}
+      MYSQL_USER: ${MYSQL_USER:?Set MYSQL_USER in .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci", "--default-time-zone=+00:00"]
+    ports:
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3307}:3306"
+    volumes:
+      - baakio_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      OTP_CHANNEL: ${OTP_CHANNEL:-SMS}
+      OTP_HASH_SECRET: ${OTP_HASH_SECRET:?Set OTP_HASH_SECRET in .env}
+      OTP_EXPIRES_SECONDS: ${OTP_EXPIRES_SECONDS:-300}
+      OTP_RESEND_COOLDOWN_SECONDS: ${OTP_RESEND_COOLDOWN_SECONDS:-60}
+      OTP_MAX_REQUESTS_PER_HOUR: ${OTP_MAX_REQUESTS_PER_HOUR:-5}
+      OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
+      SMS_NOTIFICATION_PROVIDER: ${SMS_NOTIFICATION_PROVIDER:-development}
+      WHATSAPP_NOTIFICATION_PROVIDER: ${WHATSAPP_NOTIFICATION_PROVIDER:-development}
+      EMAIL_NOTIFICATION_PROVIDER: ${EMAIL_NOTIFICATION_PROVIDER:-development}
+      FAST2SMS_BASE_URL: ${FAST2SMS_BASE_URL:-https://www.fast2sms.com}
+      FAST2SMS_API_KEY: ${FAST2SMS_API_KEY:-}
+      FAST2SMS_OTP_TEMPLATE_ID: ${FAST2SMS_OTP_TEMPLATE_ID:-}
+      FAST2SMS_OTP_VARIABLES_TEMPLATE: ${FAST2SMS_OTP_VARIABLES_TEMPLATE:-}
+      FAST2SMS_QUICK_SMS_ROUTE: ${FAST2SMS_QUICK_SMS_ROUTE:-q}
+      FAST2SMS_WHATSAPP_VERSION: ${FAST2SMS_WHATSAPP_VERSION:-v26.0}
+      FAST2SMS_WHATSAPP_PHONE_NUMBER_ID: ${FAST2SMS_WHATSAPP_PHONE_NUMBER_ID:-}
+      FAST2SMS_WHATSAPP_OTP_TEMPLATE_NAME: ${FAST2SMS_WHATSAPP_OTP_TEMPLATE_NAME:-}
+      FAST2SMS_WHATSAPP_OTP_BUTTON_INDEX: ${FAST2SMS_WHATSAPP_OTP_BUTTON_INDEX:-}
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
+      NOTIFICATION_EMAIL_FROM: ${NOTIFICATION_EMAIL_FROM:-}
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  baakio_mysql:
