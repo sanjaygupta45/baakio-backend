@@ -13,6 +13,13 @@ import java.util.Optional;
 
 public interface OtpChallengeRepository extends JpaRepository<OtpChallenge, String> {
 
+    @Modifying
+    @Query(value = """
+            INSERT INTO otp_request_lock (phone_e164) VALUES (:phone)
+            ON DUPLICATE KEY UPDATE phone_e164 = VALUES(phone_e164)
+            """, nativeQuery = true)
+    int acquirePhoneRequestLock(@Param("phone") String phoneE164);
+
     long countByPhoneE164AndRequestedAtGreaterThanEqual(String phoneE164, Instant since);
 
     Optional<OtpChallenge> findFirstByPhoneE164OrderByRequestedAtDesc(String phoneE164);
@@ -21,7 +28,7 @@ public interface OtpChallengeRepository extends JpaRepository<OtpChallenge, Stri
     @Query("select c from OtpChallenge c where c.id = :id")
     Optional<OtpChallenge> findLockedById(@Param("id") String id);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             update OtpChallenge c set c.invalidatedAt = :now
              where c.phoneE164 = :phone and c.consumedAt is null and c.invalidatedAt is null

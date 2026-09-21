@@ -46,8 +46,9 @@ public class BusinessService {
             throw new ApiException(HttpStatus.UNPROCESSABLE_CONTENT, "ACCOUNT_HOLDER_CONFIRMATION_REQUIRED",
                     "Confirm that these payment details belong to your business.");
         }
-        businesses.updatePaymentDetails(accountHolder.businessId(), vpa, mobile, payee,
-                hasDetails ? Instant.now() : null);
+        int updated = businesses.updatePaymentDetails(accountHolder.businessId(), accountHolder.id(),
+                vpa, mobile, payee, hasDetails ? Instant.now() : null);
+        if (updated == 0) throw ApiException.notFound();
         return business(accountHolder.businessId());
     }
 

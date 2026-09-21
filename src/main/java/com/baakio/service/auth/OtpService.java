@@ -74,6 +74,9 @@ public class OtpService {
     @Transactional
     public OtpRequestResponse request(String rawPhone, OtpPurpose purpose, String locale) {
         String phone = IndianPhoneNumbers.normalize(rawPhone);
+        // The upsert holds a row lock until this transaction commits, so requests
+        // for this phone cannot race past the cooldown or hourly rate limit.
+        challenges.acquirePhoneRequestLock(phone);
         Instant now = Instant.now();
         if (challenges.countByPhoneE164AndRequestedAtGreaterThanEqual(phone,
                 now.minus(Duration.ofHours(1))) >= maxRequestsPerHour) {

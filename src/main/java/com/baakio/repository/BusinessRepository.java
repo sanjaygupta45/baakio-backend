@@ -19,9 +19,10 @@ public interface BusinessRepository extends JpaRepository<Business, String> {
                    b.upiLinkedMobileE164 = :mobile,
                    b.upiPayeeName = :payeeName,
                    b.paymentDetailsAccountHolderConfirmedAt = :confirmedAt
-             where b.id = :businessId
+             where b.id = :businessId and b.accountHolderId = :accountHolderId
             """)
-    int updatePaymentDetails(@Param("businessId") String businessId, @Param("vpa") String vpa,
+    int updatePaymentDetails(@Param("businessId") String businessId,
+            @Param("accountHolderId") String accountHolderId, @Param("vpa") String vpa,
             @Param("mobile") String mobile, @Param("payeeName") String payeeName,
             @Param("confirmedAt") Instant confirmedAt);
 }

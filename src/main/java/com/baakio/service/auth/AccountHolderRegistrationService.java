@@ -47,13 +47,15 @@ public class AccountHolderRegistrationService {
         String businessName = request.businessName().trim();
         try {
             accountHolders.saveAndFlush(new AccountHolder(accountHolderId, phone, email, displayName, locale));
-            Business business = new Business(businessId, businessName, accountHolderId);
-            business.setDefaultLocale(locale);
-            businesses.save(business);
         } catch (DataIntegrityViolationException exception) {
             throw new ApiException(HttpStatus.CONFLICT, "ACCOUNT_HOLDER_ALREADY_EXISTS",
                     "An account holder already uses this phone number or email address.");
         }
+        Business business = new Business(businessId, businessName, accountHolderId);
+        business.setDefaultLocale(locale);
+        // Flush here so business persistence errors surface inside this method
+        // and the surrounding transaction rolls back before a response is built.
+        businesses.saveAndFlush(business);
         return new AccountHolderPrincipal(accountHolderId, businessId, businessName,
                 displayName, phone, email, true);
     }
