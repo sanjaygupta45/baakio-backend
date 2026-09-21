@@ -18,11 +18,37 @@ services:
       timeout: 5s
       retries: 20
 
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-baakio}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-baakio-local-rabbit}
+    ports:
+      - "127.0.0.1:${RABBITMQ_HOST_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_HOST_PORT:-15672}:15672"
+    volumes:
+      - baakio_rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - baakio_redis:/data
+
   api:
     build: .
     restart: unless-stopped
     depends_on:
       mysql:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     environment:
       PORT: 8080
@@ -30,6 +56,17 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC
       DB_USER: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-baakio}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-baakio-local-rabbit}
+      SCAN_MESSAGING_ENABLED: ${SCAN_MESSAGING_ENABLED:-true}
+      SCAN_SCHEDULING_ENABLED: ${SCAN_SCHEDULING_ENABLED:-true}
+      DOCUMENT_STORAGE_MODE: ${DOCUMENT_STORAGE_MODE:-local}
+      LOCAL_STORAGE_DIRECTORY: /data/private
+      SCAN_RETENTION_DAYS: ${SCAN_RETENTION_DAYS:-30}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      MISTRAL_OCR_MODEL: ${MISTRAL_OCR_MODEL:-mistral-ocr-latest}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       OTP_CHANNEL: ${OTP_CHANNEL:-SMS}
@@ -57,6 +94,11 @@ services:
       NOTIFICATION_EMAIL_FROM: ${NOTIFICATION_EMAIL_FROM:-}
     ports:
       - "127.0.0.1:8080:8080"
+    volumes:
+      - baakio_private_documents:/data/private
 
 volumes:
   baakio_mysql:
+  baakio_rabbitmq:
+  baakio_redis:
+  baakio_private_documents:

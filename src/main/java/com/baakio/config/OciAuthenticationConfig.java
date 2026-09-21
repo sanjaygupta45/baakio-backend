@@ -1,0 +1,28 @@
+package com.baakio.config;
+
+import com.oracle.bmc.ConfigFileReader;
+import com.oracle.bmc.auth.ConfigFileAuthenticationDetailsProvider;
+import com.oracle.bmc.objectstorage.ObjectStorage;
+import com.oracle.bmc.objectstorage.ObjectStorageClient;
+import com.oracle.bmc.Region;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.io.IOException;
+
+@Configuration
+@ConditionalOnProperty(name = "baakio.storage.mode", havingValue = "oci")
+public class OciAuthenticationConfig {
+    @Bean(destroyMethod = "close")
+    ObjectStorage ociObjectStorage(@Value("${baakio.storage.oci.config-file:}") String configFile,
+                                   @Value("${baakio.storage.oci.profile:DEFAULT}") String profile,
+                                   @Value("${baakio.storage.oci.region}") String region) throws IOException {
+        var config = configFile.isBlank()
+                ? ConfigFileReader.parseDefault(profile)
+                : ConfigFileReader.parse(configFile, profile);
+        var provider = new ConfigFileAuthenticationDetailsProvider(config);
+        return ObjectStorageClient.builder().region(Region.fromRegionId(region)).build(provider);
+    }
+}

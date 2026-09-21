@@ -55,7 +55,7 @@ class AccountHolderRegistrationServiceTest {
         });
 
         private final BusinessRepository businesses = proxy(BusinessRepository.class, (instance, method, arguments) -> {
-            if (method.getName().equals("save")) {
+            if (method.getName().equals("save") || method.getName().equals("saveAndFlush")) {
                 business = (Business) arguments[0];
                 return business;
             }

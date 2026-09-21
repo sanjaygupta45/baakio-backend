@@ -5,11 +5,12 @@ Spring Boot REST API for the Baakio shop ledger. This app owns authentication, s
 ## Local run
 
 1. Copy `.env.example` to `.env`.
-2. Start MySQL and the API with `docker compose up --build`.
+2. Start MySQL, RabbitMQ, Redis, and the API with `docker compose up --build`.
 3. Run the separate frontend from `../baakio-fe` with `npm install` and `npm run dev`.
 4. Register an account holder and business in the client. The local `dev` profile accepts `222222` as the OTP.
 
 The example Compose setup publishes MySQL on `127.0.0.1:3307` to avoid conflicts with a local MySQL server. Change `MYSQL_HOST_PORT` if that port is already in use.
+Set `MISTRAL_API_KEY` in `.env` to enable bill extraction. Without a key, uploaded jobs become `FAILED` and the shopkeeper can use manual purchase entry. Compose uses a private local document volume for development; production should use the OCI adapter and a private bucket.
 
 ## Maven commands
 
@@ -35,6 +36,10 @@ The Docker Compose ports bind to localhost. The `dev` profile uses OTP `222222`,
 - `Fast2SmsClient` owns the Fast2SMS HTTP contract. The Fast2SMS provider supports the OTP and quick SMS routes plus WhatsApp templates. SMTP email is enabled when `SPRING_MAIL_HOST` is configured.
 - Financial POSTs require `Idempotency-Key`, lock the customer row, validate the current balance, write the event and audit row in one transaction, and return fresh server-computed balances.
 - Itemized totals use `BigDecimal`; line totals round to paise with `HALF_UP`. Payments and promise allocations are checked independently so allocations do not reduce debt twice.
+- Bill scans use MySQL `scan_job`, `scan_draft`, `scan_attempt`, and `outbox_event` tables. The outbox relay marks an event published only after a RabbitMQ publisher confirm and successful routing. Duplicate deliveries are guarded by a processing claim; stale claims are retried up to three times.
+- Scan images are private objects. Development uses the local adapter; production uses the OCI Object Storage adapter with OCI config-file credentials and namespace/bucket/region settings. Never make the OCI bucket public. The retention job deletes unkept images after `SCAN_RETENTION_DAYS` (30 by default).
+- Mistral OCR only proposes fields. Draft totals and final line totals are recalculated in the application; confirmation calls the existing financial purchase posting service and changes outstanding only after that transaction commits. The shopkeeper must explicitly confirm any `paidNow` amount.
+- RabbitMQ is the scan queue. Redis is included in Compose only for optional disposable read caching; it is not used for ledger or balance decisions.
 - Session writes require the `X-XSRF-TOKEN` cookie/header pair. Browser requests use the configured exact `FRONTEND_ORIGIN` and credentials.
 
 ## API routes
@@ -62,9 +67,15 @@ All routes use `/api/v1`. CSRF bootstrap, OTP requests, login, and registration 
 | POST | `/commitments/{id}/reschedule` | Append a date revision |
 | GET | `/dashboard` | Total, due today, overdue, and follow-up customers |
 | POST | `/customers/{id}/reminder-preview` | Server-derived English/Hindi WhatsApp preview |
+| POST | `/customers/{id}/scans` | Upload one JPEG/PNG/WebP bill as multipart `file`; returns `202 Accepted` with `scanId` |
+| GET | `/scans/{id}` | Tenant-scoped scan status and reviewable draft |
+| GET | `/scans/{id}/image` | Tenant-authorized original bill image; `Cache-Control: no-store` |
+| POST | `/scans/{id}/confirm` | Confirm edited lines and draft `version` with an `Idempotency-Key`; posts through normal purchase rules |
 
-Photo scan endpoints are intentionally not exposed yet. Private image storage, an asynchronous job queue, and a configured vision provider must be in place before the client can upload or confirm a scan. The frontend keeps manual purchase entry available.
+Scan upload requires `Idempotency-Key`; the multipart form may include `keepAttachment=true` to retain the original image beyond its review period. Status and image requests return 404 when the scan belongs to another business.
 
 For non-dev deployments, configure `OTP_HASH_SECRET`, `FAST2SMS_API_KEY`, and an approved `FAST2SMS_OTP_TEMPLATE_ID`. Configure `OTP_CHANNEL=SMS` to send codes over SMS or `OTP_CHANNEL=WHATSAPP` with the approved WhatsApp phone number ID and template. Email notification delivery is available through Spring Mail; the current phone authentication flow sends OTPs through SMS or WhatsApp. Route SMS, WhatsApp, and email by setting `SMS_NOTIFICATION_PROVIDER`, `WHATSAPP_NOTIFICATION_PROVIDER`, and `EMAIL_NOTIFICATION_PROVIDER` to a registered provider ID.
+
+For OCI document storage set `DOCUMENT_STORAGE_MODE=oci`, `OCI_CONFIG_FILE` (or mount the standard OCI config path), `OCI_PROFILE`, `OCI_REGION`, `OCI_OBJECT_STORAGE_NAMESPACE`, and `OCI_OBJECT_STORAGE_BUCKET`. Grant the API identity only the required object read/write/delete permissions on the private bucket. Set `MISTRAL_API_KEY` to activate OCR extraction.
 
 See the design pack at `../baakio-design-pack` for the product, UX, and domain rules.
