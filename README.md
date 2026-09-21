@@ -24,7 +24,7 @@ The Docker Compose ports bind to localhost. The `dev` profile uses OTP `222222`,
 ## Backend implementation
 
 - Java 21, Spring Boot 4, Spring Security sessions, Hibernate ORM/JPA, Flyway, and MySQL 8.4.
-- Source is organized in horizontal layers: `controller`, `dto`, `model`, `repository`, `service`, `config`, and `utils`.
+- Source is organized in horizontal layers: `controller`, `dto`, `model`, `repository`, `service`, `ai`, `messaging`, `config`, and `utils`.
 - DTOs are grouped by responsibility under `dto/auth`, `dto/business`, `dto/customer`, `dto/ledger`, `dto/commitment`, `dto/dashboard`, and `dto/reminder`.
 - Controllers handle HTTP binding, DTOs define API contracts, services own validation and transactions, and repositories use Hibernate entity operations and JPQL.
 - Flyway owns schema changes; Hibernate validates entity mappings against the migrated schema at startup and does not create or update tables.
@@ -38,6 +38,7 @@ The Docker Compose ports bind to localhost. The `dev` profile uses OTP `222222`,
 - Itemized totals use `BigDecimal`; line totals round to paise with `HALF_UP`. Payments and promise allocations are checked independently so allocations do not reduce debt twice.
 - Bill scans use MySQL `scan_job`, `scan_draft`, `scan_attempt`, and `outbox_event` tables. The outbox relay marks an event published only after a RabbitMQ publisher confirm and successful routing. Duplicate deliveries are guarded by a processing claim; stale claims are retried up to three times.
 - Scan images are private objects. Development uses the local adapter; production uses the OCI Object Storage adapter with OCI config-file credentials and namespace/bucket/region settings. Never make the OCI bucket public. The retention job deletes unkept images after `SCAN_RETENTION_DAYS` (30 by default).
+- The `ai` layer owns Mistral extraction, bounded retries, field validation, and editable draft calculation. The service worker owns storage retrieval and persistence; the AI layer never posts financial records.
 - Mistral OCR only proposes fields. Draft totals and final line totals are recalculated in the application; confirmation calls the existing financial purchase posting service and changes outstanding only after that transaction commits. The shopkeeper must explicitly confirm any `paidNow` amount.
 - RabbitMQ is the scan queue. Redis is included in Compose only for optional disposable read caching; it is not used for ledger or balance decisions.
 - Session writes require the `X-XSRF-TOKEN` cookie/header pair. Browser requests use the configured exact `FRONTEND_ORIGIN` and credentials.
