@@ -6,7 +6,7 @@ import com.baakio.dto.scan.ScanResponse;
 import com.baakio.dto.scan.ScanUploadResponse;
 import com.baakio.service.BillScanService;
 import com.baakio.security.AccountHolderPrincipal;
-import com.baakio.storage.StoredDocument;
+import com.baakio.dto.scan.StoredDocument;
 import jakarta.validation.Valid;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;

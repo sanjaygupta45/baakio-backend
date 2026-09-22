@@ -2,7 +2,6 @@ package com.baakio.service;
 
 import com.baakio.repository.ScanJobRecord;
 import com.baakio.repository.ScanRepository;
-import com.baakio.storage.DocumentStorage;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;

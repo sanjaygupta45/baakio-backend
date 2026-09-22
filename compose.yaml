@@ -62,8 +62,11 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-baakio-local-rabbit}
       SCAN_MESSAGING_ENABLED: ${SCAN_MESSAGING_ENABLED:-true}
       SCAN_SCHEDULING_ENABLED: ${SCAN_SCHEDULING_ENABLED:-true}
-      DOCUMENT_STORAGE_MODE: ${DOCUMENT_STORAGE_MODE:-local}
-      LOCAL_STORAGE_DIRECTORY: /data/private
+      OCI_CONFIG_FILE: /root/.oci/config
+      OCI_PROFILE: ${OCI_PROFILE:-DEFAULT}
+      OCI_REGION: ${OCI_REGION:?Set OCI_REGION in .env}
+      OCI_OBJECT_STORAGE_NAMESPACE: ${OCI_OBJECT_STORAGE_NAMESPACE:?Set OCI_OBJECT_STORAGE_NAMESPACE in .env}
+      OCI_OBJECT_STORAGE_BUCKET: ${OCI_OBJECT_STORAGE_BUCKET:?Set OCI_OBJECT_STORAGE_BUCKET in .env}
       SCAN_RETENTION_DAYS: ${SCAN_RETENTION_DAYS:-30}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       MISTRAL_OCR_MODEL: ${MISTRAL_OCR_MODEL:-mistral-ocr-latest}
@@ -95,10 +98,9 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - baakio_private_documents:/data/private
+      - ${OCI_CONFIG_HOST_PATH:?Set OCI_CONFIG_HOST_PATH in .env}:/root/.oci/config:ro
 
 volumes:
   baakio_mysql:
   baakio_rabbitmq:
   baakio_redis:
-  baakio_private_documents:
