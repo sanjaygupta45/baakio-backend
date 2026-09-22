@@ -1,7 +1,6 @@
 package com.baakio.service;
 
-import com.baakio.repository.ScanJobRecord;
-import com.baakio.repository.ScanRepository;
+import com.baakio.dto.scan.ScanJobRecord;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -10,11 +9,11 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "baakio.scan.scheduling.enabled", havingValue = "true", matchIfMissing = true)
 public class ScanCleanupScheduler {
-    private final ScanRepository scans;
+    private final ScanPersistenceService scans;
     private final DocumentStorage storage;
     private final int retentionDays;
 
-    public ScanCleanupScheduler(ScanRepository scans, DocumentStorage storage,
+    public ScanCleanupScheduler(ScanPersistenceService scans, DocumentStorage storage,
                                 @Value("${baakio.scan.retention-days:30}") int retentionDays) {
         this.scans = scans;
         this.storage = storage;

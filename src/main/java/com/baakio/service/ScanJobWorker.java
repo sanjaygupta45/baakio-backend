@@ -2,8 +2,8 @@ package com.baakio.service;
 
 import com.baakio.ai.BillScanAiOrchestrator;
 import com.baakio.ai.ScanAiResult;
-import com.baakio.repository.ScanClaim;
-import com.baakio.repository.ScanRepository;
+import com.baakio.dto.scan.ScanClaim;
+import com.baakio.dto.scan.ScanJobRecord;
 import com.baakio.dto.scan.StoredDocument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,11 +14,11 @@ import java.util.Optional;
 @Service
 public class ScanJobWorker {
     private static final Logger log = LoggerFactory.getLogger(ScanJobWorker.class);
-    private final ScanRepository scans;
+    private final ScanPersistenceService scans;
     private final DocumentStorage storage;
     private final BillScanAiOrchestrator ai;
 
-    public ScanJobWorker(ScanRepository scans, DocumentStorage storage, BillScanAiOrchestrator ai) {
+    public ScanJobWorker(ScanPersistenceService scans, DocumentStorage storage, BillScanAiOrchestrator ai) {
         this.scans = scans;
         this.storage = storage;
         this.ai = ai;

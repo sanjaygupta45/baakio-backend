@@ -10,14 +10,20 @@ import com.baakio.dto.ledger.PaymentResponse;
 import com.baakio.dto.ledger.PurchaseLineRequest;
 import com.baakio.dto.ledger.PurchaseLineResponse;
 import com.baakio.dto.ledger.PurchaseResponse;
-import com.baakio.dto.ledger.AllocationResponse;
 import com.baakio.model.AccountOpeningBalance;
+import com.baakio.model.AuditEvent;
 import com.baakio.model.Payment;
+import com.baakio.model.PaymentAllocation;
 import com.baakio.model.Purchase;
 import com.baakio.model.PurchaseLine;
 import com.baakio.security.AccountHolderPrincipal;
-import com.baakio.repository.FinancialRepository;
-import com.baakio.repository.LedgerRepository;
+import com.baakio.repository.AccountOpeningBalanceRepository;
+import com.baakio.repository.AuditEventRepository;
+import com.baakio.repository.CommitmentRepository;
+import com.baakio.repository.PaymentAllocationRepository;
+import com.baakio.repository.PaymentRepository;
+import com.baakio.repository.PurchaseLineRepository;
+import com.baakio.repository.PurchaseRepository;
 import com.baakio.exception.ApiException;
 import com.baakio.utils.MoneyAmounts;
 import org.springframework.http.HttpStatus;
@@ -34,13 +40,28 @@ import java.util.Set;
 @Service
 public class FinancialPostingService {
     private static final Set<String> METHODS = Set.of("CASH", "UPI", "BANK", "OTHER");
-    private final FinancialRepository financial;
-    private final LedgerRepository ledger;
+    private final AccountOpeningBalanceRepository openings;
+    private final AuditEventRepository audits;
+    private final CommitmentRepository commitments;
+    private final PaymentAllocationRepository allocations;
+    private final PaymentRepository payments;
+    private final PurchaseLineRepository purchaseLines;
+    private final PurchaseRepository purchases;
+    private final LedgerService ledger;
     private final IdempotencyService idempotency;
 
-    public FinancialPostingService(FinancialRepository financial, LedgerRepository ledger,
+    public FinancialPostingService(AccountOpeningBalanceRepository openings, AuditEventRepository audits,
+                                   CommitmentRepository commitments, PaymentAllocationRepository allocations,
+                                   PaymentRepository payments, PurchaseLineRepository purchaseLines,
+                                   PurchaseRepository purchases, LedgerService ledger,
                                    IdempotencyService idempotency) {
-        this.financial = financial;
+        this.openings = openings;
+        this.audits = audits;
+        this.commitments = commitments;
+        this.allocations = allocations;
+        this.payments = payments;
+        this.purchaseLines = purchaseLines;
+        this.purchases = purchases;
         this.ledger = ledger;
         this.idempotency = idempotency;
     }
@@ -59,14 +80,16 @@ public class FinancialPostingService {
         if (request.cutoffDate().isAfter(today)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "OPENING_DATE_IN_FUTURE", "The cutoff date cannot be in the future.");
         }
-        if (financial.hasOpeningBalance(principal.businessId(), customerId)) {
+        if (openings.existsByBusinessIdAndCustomerId(principal.businessId(), customerId)) {
             throw new ApiException(HttpStatus.CONFLICT, "OPENING_BALANCE_ALREADY_SET", "An opening balance is already recorded for this customer.");
         }
-        if (financial.hasActivityOnOrBefore(principal.businessId(), customerId, request.cutoffDate())) {
+        if (openings.existsPurchaseOnOrBefore(principal.businessId(), customerId, request.cutoffDate())
+                || openings.existsPaymentOnOrBefore(principal.businessId(), customerId, request.cutoffDate())) {
             throw new ApiException(HttpStatus.CONFLICT, "OPENING_BALANCE_DATE_CONFLICT", "Recorded activity exists on or before this cutoff date. Choose a later cutoff and reconcile the account.");
         }
         BigDecimal amount = MoneyAmounts.requireCents(request.amount(), "INVALID_OPENING_AMOUNT");
-        long id = financial.insertOpeningBalance(principal.businessId(), customerId, amount, request.cutoffDate(), principal.id());
+        long id = openings.saveAndFlush(new AccountOpeningBalance(principal.businessId(), customerId, amount,
+                request.cutoffDate(), principal.id())).getId();
         idempotency.record(principal.businessId(), key, "OPENING_BALANCE", "OPENING_BALANCE", id);
         audit(principal, "OPENING_BALANCE", id, "POSTED");
         return openingResponse(principal.businessId(), customerId, id);
@@ -131,10 +154,10 @@ public class FinancialPostingService {
             }
         }
 
-        long purchaseId = financial.insertPurchase(new Purchase(principal.businessId(), customerId, occurredOn,
-                mode, description, subtotal, discount, total, principal.id()));
+        long purchaseId = purchases.saveAndFlush(new Purchase(principal.businessId(), customerId, occurredOn,
+                mode, description, subtotal, discount, total, principal.id())).getId();
         for (PreparedLine line : lines) {
-            financial.insertPurchaseLine(new PurchaseLine(purchaseId, line.lineNo(), line.name(),
+            purchaseLines.save(new PurchaseLine(purchaseId, line.lineNo(), line.name(),
                     line.quantity(), line.unit(), line.unitPrice(), line.lineTotal()));
         }
         if (paidNow != null) insertPayment(principal, customerId, purchaseId, paidNow, paidMethod, occurredOn, null);
@@ -165,18 +188,18 @@ public class FinancialPostingService {
         if (amount.compareTo(availableOnDate) > 0) {
             throw new ApiException(HttpStatus.CONFLICT, "PAYMENT_EXCEEDS_DATE_BALANCE", "This payment is greater than the outstanding balance on the selected payment date.");
         }
-        List<PaymentAllocationRequest> allocations = request.allocations() == null ? List.of() : request.allocations();
+        List<PaymentAllocationRequest> allocationRequests = request.allocations() == null ? List.of() : request.allocations();
         BigDecimal allocationTotal = MoneyAmounts.zero();
-        for (PaymentAllocationRequest allocation : allocations) {
+        for (PaymentAllocationRequest allocation : allocationRequests) {
             allocationTotal = allocationTotal.add(MoneyAmounts.requireCents(allocation.amount(), "INVALID_ALLOCATION"));
         }
         if (allocationTotal.compareTo(amount) > 0) {
             throw new ApiException(HttpStatus.CONFLICT, "ALLOCATIONS_EXCEED_PAYMENT", "Promise allocations cannot exceed the received payment.");
         }
-        if (allocations.stream().map(PaymentAllocationRequest::commitmentId).distinct().count() != allocations.size()) {
+        if (allocationRequests.stream().map(PaymentAllocationRequest::commitmentId).distinct().count() != allocationRequests.size()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "DUPLICATE_ALLOCATION", "Each promise can appear only once in a payment.");
         }
-        for (PaymentAllocationRequest allocation : allocations) {
+        for (PaymentAllocationRequest allocation : allocationRequests) {
             BigDecimal remaining = commitmentRemaining(principal.businessId(), customerId, allocation.commitmentId());
             BigDecimal allocationAmount = MoneyAmounts.requireCents(allocation.amount(), "INVALID_ALLOCATION");
             if (allocationAmount.compareTo(remaining) > 0) {
@@ -187,12 +210,16 @@ public class FinancialPostingService {
         long paymentId = insertPayment(principal, customerId, null, amount, method, occurredOn, clean(request.reference()));
         idempotency.record(principal.businessId(), key, "PAYMENT", "PAYMENT", paymentId);
         // Allocations fulfill promises; the confirmed payment already reduced the account once.
-        for (PaymentAllocationRequest allocation : allocations) {
-            financial.insertAllocation(principal.businessId(), paymentId, allocation.commitmentId(),
-                    MoneyAmounts.requireCents(allocation.amount(), "INVALID_ALLOCATION"));
+        for (PaymentAllocationRequest allocation : allocationRequests) {
+            allocations.save(new PaymentAllocation(principal.businessId(), paymentId, allocation.commitmentId(),
+                    MoneyAmounts.requireCents(allocation.amount(), "INVALID_ALLOCATION")));
             BigDecimal remaining = commitmentRemaining(principal.businessId(), customerId, allocation.commitmentId());
             if (remaining.signum() == 0) {
-                financial.markCommitmentFulfilled(principal.businessId(), customerId, allocation.commitmentId());
+                commitments.findByBusinessIdAndCustomerIdAndId(principal.businessId(), customerId, allocation.commitmentId())
+                        .ifPresent(commitment -> {
+                            commitment.setStatus("FULFILLED");
+                            commitments.save(commitment);
+                        });
             }
         }
         audit(principal, "PAYMENT", paymentId, "CONFIRMED");
@@ -200,50 +227,49 @@ public class FinancialPostingService {
     }
 
     public OpeningBalanceResponse openingResponse(String businessId, long customerId, long openingId) {
-        AccountOpeningBalance opening = financial.findOpeningBalance(businessId, customerId, openingId);
-        if (opening == null) throw missingIdempotentResource();
+        AccountOpeningBalance opening = openings.findByBusinessIdAndCustomerIdAndId(businessId, customerId, openingId)
+                .orElseThrow(this::missingIdempotentResource);
         return new OpeningBalanceResponse(customerId, MoneyAmounts.text(opening.getAmount()), opening.getCutoffDate(),
                 MoneyAmounts.text(ledger.outstanding(businessId, customerId)), opening.getPostedAt());
     }
 
     public PurchaseResponse purchaseResponse(String businessId, long customerId, long purchaseId) {
-        Purchase purchase = financial.findPurchase(businessId, customerId, purchaseId);
-        if (purchase == null) throw missingIdempotentResource();
-        List<PurchaseLineResponse> lines = financial.findPurchaseLines(purchaseId).stream().map(line ->
+        Purchase purchase = purchases.findByBusinessIdAndCustomerIdAndId(businessId, customerId, purchaseId)
+                .orElseThrow(this::missingIdempotentResource);
+        List<PurchaseLineResponse> lines = purchaseLines.findByPurchaseIdOrderByLineNo(purchaseId).stream().map(line ->
                 new PurchaseLineResponse(line.getName(), line.getQuantity().stripTrailingZeros().toPlainString(),
                         line.getUnit(), MoneyAmounts.text(line.getUnitPrice()), MoneyAmounts.text(line.getLineTotal()))).toList();
         return new PurchaseResponse(purchaseId, customerId, purchase.getEntryMode(), purchase.getOccurredOn(),
                 purchase.getDescription(), MoneyAmounts.text(purchase.getSubtotal()), MoneyAmounts.text(purchase.getDiscount()),
-                MoneyAmounts.text(purchase.getTotal()), MoneyAmounts.text(financial.purchasePaymentTotal(purchaseId)),
+                MoneyAmounts.text(purchase.getTotal()), MoneyAmounts.text(payments.sumForPurchase(purchaseId)),
                 MoneyAmounts.text(ledger.outstanding(businessId, customerId)), lines, purchase.getPostedAt());
     }
 
     public PaymentResponse paymentResponse(String businessId, long customerId, long paymentId) {
-        Payment payment = financial.findPayment(businessId, customerId, paymentId);
-        if (payment == null) throw missingIdempotentResource();
-        List<AllocationResponse> allocations = financial.findPaymentAllocations(paymentId);
+        Payment payment = payments.findByBusinessIdAndCustomerIdAndIdAndStatus(businessId, customerId, paymentId, "CONFIRMED")
+                .orElseThrow(this::missingIdempotentResource);
+        List<AllocationResponse> allocationResponses = allocations.findResponsesByPaymentId(paymentId);
         return new PaymentResponse(paymentId, customerId, MoneyAmounts.text(payment.getAmount()),
                 payment.getMethod(), payment.getOccurredOn(), payment.getReferenceText(),
-                MoneyAmounts.text(ledger.outstanding(businessId, customerId)), allocations, payment.getPostedAt());
+                MoneyAmounts.text(ledger.outstanding(businessId, customerId)), allocationResponses, payment.getPostedAt());
     }
 
     private long insertPayment(AccountHolderPrincipal principal, long customerId, Long purchaseId, BigDecimal amount,
             String method, LocalDate occurredOn, String reference) {
-        return financial.insertPayment(principal.businessId(), customerId, purchaseId, amount,
-                method, occurredOn, reference, principal.id());
+        return payments.saveAndFlush(new Payment(principal.businessId(), customerId, purchaseId, amount,
+                method, occurredOn, reference, "CONFIRMED", principal.id())).getId();
     }
 
     private BigDecimal commitmentRemaining(String businessId, long customerId, long commitmentId) {
-        BigDecimal remaining = financial.commitmentRemaining(businessId, customerId, commitmentId);
-        if (remaining == null) throw ApiException.notFound();
-        return remaining;
+        return allocations.findRemaining(businessId, customerId, commitmentId).orElseThrow(ApiException::notFound);
     }
 
     private void ensureDateAllowed(String businessId, long customerId, LocalDate date) {
         if (date.isAfter(ledger.businessDate(businessId))) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "TRANSACTION_DATE_IN_FUTURE", "The transaction date cannot be in the future.");
         }
-        LocalDate cutoff = financial.findOpeningCutoff(businessId, customerId);
+        LocalDate cutoff = openings.findByBusinessIdAndCustomerId(businessId, customerId)
+                .map(AccountOpeningBalance::getCutoffDate).orElse(null);
         if (cutoff != null && !date.isAfter(cutoff)) {
             throw new ApiException(HttpStatus.CONFLICT, "TRANSACTION_BEFORE_OPENING_CUTOFF", "This date is on or before the opening-balance cutoff. Review the account migration date.");
         }
@@ -262,7 +288,7 @@ public class FinancialPostingService {
     }
 
     private void audit(AccountHolderPrincipal principal, String type, long id, String action) {
-        financial.audit(principal.businessId(), principal.id(), type, id, action);
+        audits.save(new AuditEvent(principal.businessId(), principal.id(), type, id, action));
     }
 
     private ApiException missingIdempotentResource() {

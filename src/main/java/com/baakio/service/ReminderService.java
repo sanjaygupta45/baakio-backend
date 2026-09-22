@@ -9,7 +9,7 @@ import com.baakio.dto.reminder.ReminderResponse;
 import com.baakio.security.AccountHolderPrincipal;
 import com.baakio.model.Business;
 import com.baakio.repository.BusinessRepository;
-import com.baakio.repository.CustomerRepository;
+import com.baakio.repository.CommitmentRepository;
 import com.baakio.utils.MoneyAmounts;
 import com.baakio.exception.ApiException;
 import org.springframework.stereotype.Service;
@@ -28,14 +28,14 @@ public class ReminderService {
     private final CustomerService customers;
     private final LedgerReadService reads;
     private final BusinessRepository businesses;
-    private final CustomerRepository customerRepository;
+    private final CommitmentRepository commitments;
 
     public ReminderService(CustomerService customers, LedgerReadService reads,
-                           BusinessRepository businesses, CustomerRepository customerRepository) {
+                           BusinessRepository businesses, CommitmentRepository commitments) {
         this.customers = customers;
         this.reads = reads;
         this.businesses = businesses;
-        this.customerRepository = customerRepository;
+        this.commitments = commitments;
     }
 
     public ReminderResponse preview(AccountHolderPrincipal principal, long customerId, ReminderRequest request) {
@@ -127,7 +127,8 @@ public class ReminderService {
 
     private String nextPromise(String businessId, long customerId, boolean hindi, DateTimeFormatter dateFormat,
                                LocalDate today) {
-        CommitmentSummary commitment = customerRepository.findNextActiveCommitment(businessId, customerId, today);
+        CommitmentSummary commitment = commitments.findActiveSummaries(businessId, customerId, today)
+                .stream().findFirst().orElse(null);
         if (commitment == null) return null;
         String prefix = hindi ? "अगला भुगतान वादा" : "Next payment promise";
         return prefix + ": ₹" + commitment.remaining()

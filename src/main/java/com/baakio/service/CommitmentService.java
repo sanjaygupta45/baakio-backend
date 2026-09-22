@@ -7,8 +7,10 @@ import com.baakio.dto.commitment.RevisionResponse;
 import com.baakio.security.AccountHolderPrincipal;
 import com.baakio.model.CommitmentRevision;
 import com.baakio.model.Commitment;
+import com.baakio.model.AuditEvent;
+import com.baakio.repository.AuditEventRepository;
 import com.baakio.repository.CommitmentRepository;
-import com.baakio.repository.LedgerRepository;
+import com.baakio.repository.CommitmentRevisionRepository;
 import com.baakio.utils.MoneyAmounts;
 import com.baakio.exception.ApiException;
 import org.springframework.http.HttpStatus;
@@ -23,11 +25,16 @@ import java.util.OptionalLong;
 @Service
 public class CommitmentService {
     private final CommitmentRepository commitments;
-    private final LedgerRepository ledger;
+    private final CommitmentRevisionRepository revisions;
+    private final AuditEventRepository audits;
+    private final LedgerService ledger;
     private final IdempotencyService idempotency;
 
-    public CommitmentService(CommitmentRepository commitments, LedgerRepository ledger, IdempotencyService idempotency) {
+    public CommitmentService(CommitmentRepository commitments, CommitmentRevisionRepository revisions,
+                             AuditEventRepository audits, LedgerService ledger, IdempotencyService idempotency) {
         this.commitments = commitments;
+        this.revisions = revisions;
+        this.audits = audits;
         this.ledger = ledger;
         this.idempotency = idempotency;
     }
@@ -45,8 +52,8 @@ public class CommitmentService {
         if (amount.compareTo(available) > 0) {
             throw new ApiException(HttpStatus.CONFLICT, "COMMITMENT_EXCEEDS_UNPROMISED_BALANCE", "The promise cannot exceed the amount that has not already been promised.");
         }
-        long id = commitments.create(principal.businessId(), customerId, amount, request.dueDate(),
-                clean(request.note()), principal.id());
+        long id = commitments.saveAndFlush(new Commitment(principal.businessId(), customerId, amount,
+                request.dueDate(), "ACTIVE", clean(request.note()), principal.id())).getId();
         idempotency.record(principal.businessId(), key, "COMMITMENT", "COMMITMENT", id);
         audit(principal, id, "CREATED");
         return get(principal.businessId(), customerId, id);
@@ -67,8 +74,11 @@ public class CommitmentService {
         if (request.newDueDate().equals(ref.getCurrentDueDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "COMMITMENT_DATE_UNCHANGED", "Choose a different promised date.");
         }
-        commitments.addRevisionAndUpdate(principal.businessId(), commitmentId, ref.getCurrentDueDate(),
+        CommitmentRevision revision = new CommitmentRevision(commitmentId, ref.getCurrentDueDate(),
                 request.newDueDate(), clean(request.reason()), principal.id());
+        revisions.save(revision);
+        ref.setCurrentDueDate(request.newDueDate());
+        commitments.save(ref);
         idempotency.record(principal.businessId(), key, "RESCHEDULE", "COMMITMENT", commitmentId);
         audit(principal, commitmentId, "RESCHEDULED");
         return get(principal.businessId(), ref.getCustomerId(), commitmentId);
@@ -80,12 +90,12 @@ public class CommitmentService {
     }
 
     public CommitmentResponse get(String businessId, long customerId, long commitmentId) {
-        Commitment commitment = commitments.findByBusinessCustomerAndId(businessId, customerId, commitmentId);
-        if (commitment == null) throw ApiException.notFound();
-        BigDecimal remaining = commitments.findRemainingAmount(commitmentId);
+        Commitment commitment = commitments.findByBusinessIdAndCustomerIdAndId(businessId, customerId, commitmentId)
+                .orElseThrow(ApiException::notFound);
+        BigDecimal remaining = commitments.findRemainingAmount(commitmentId).orElse(BigDecimal.ZERO);
         LocalDate dueDate = commitment.getCurrentDueDate();
         String status = status(commitment.getStatus(), remaining, dueDate, ledger.businessDate(businessId));
-        List<CommitmentRevision> revisionEntities = commitments.findRevisions(commitmentId);
+        List<CommitmentRevision> revisionEntities = revisions.findByCommitmentIdOrderById(commitmentId);
         List<RevisionResponse> revisions = revisionEntities.stream().map(revision ->
                 new RevisionResponse(revision.getOldDate(), revision.getNewDate(), revision.getReason(), revision.getCreatedAt())).toList();
         LocalDate originalDate = revisions.isEmpty() ? dueDate : revisionEntities.getFirst().getOldDate();
@@ -95,9 +105,7 @@ public class CommitmentService {
     }
 
     private Commitment findRef(String businessId, long id) {
-        Commitment ref = commitments.findReference(businessId, id);
-        if (ref == null) throw ApiException.notFound();
-        return ref;
+        return commitments.findByBusinessIdAndId(businessId, id).orElseThrow(ApiException::notFound);
     }
 
     private String status(String stored, BigDecimal remaining, LocalDate due, LocalDate today) {
@@ -108,7 +116,7 @@ public class CommitmentService {
     }
 
     private void audit(AccountHolderPrincipal principal, long id, String action) {
-        commitments.audit(principal.businessId(), principal.id(), id, action);
+        audits.save(new AuditEvent(principal.businessId(), principal.id(), "COMMITMENT", id, action));
     }
 
     private void validateKey(String key) {

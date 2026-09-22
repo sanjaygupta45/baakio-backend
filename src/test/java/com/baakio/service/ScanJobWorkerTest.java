@@ -3,10 +3,9 @@ package com.baakio.service;
 import com.baakio.ai.ScanDraftFactory;
 import com.baakio.ai.ScanExtractor;
 import com.baakio.ai.BillScanAiOrchestrator;
-import com.baakio.repository.ScanClaim;
+import com.baakio.dto.scan.ScanClaim;
 import com.baakio.ai.ScanDraft;
-import com.baakio.repository.ScanJobRecord;
-import com.baakio.repository.ScanRepository;
+import com.baakio.dto.scan.ScanJobRecord;
 import com.baakio.dto.scan.StoredDocument;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -60,7 +59,7 @@ class ScanJobWorkerTest {
         return new ScanClaim(job, "claim-token", 1);
     }
 
-    private static final class FakeRepository extends ScanRepository {
+    private static final class FakeRepository extends ScanPersistenceService {
         private final ScanClaim claim;
         private String failureCode;
         private int savedDrafts;

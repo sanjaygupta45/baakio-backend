@@ -3,8 +3,8 @@ package com.baakio.service;
 import com.baakio.dto.customer.CustomerResponse;
 import com.baakio.dto.customer.CommitmentSummary;
 import com.baakio.dto.dashboard.DashboardResponse;
-import com.baakio.repository.DashboardRepository;
-import com.baakio.repository.LedgerRepository;
+import com.baakio.repository.CommitmentRepository;
+import com.baakio.repository.CustomerRepository;
 import com.baakio.utils.MoneyAmounts;
 import org.springframework.stereotype.Service;
 
@@ -16,12 +16,15 @@ import java.util.List;
 
 @Service
 public class DashboardService {
-    private final DashboardRepository dashboardRepository;
-    private final LedgerRepository ledger;
+    private final CustomerRepository customersRepository;
+    private final CommitmentRepository commitments;
+    private final LedgerService ledger;
     private final CustomerService customers;
 
-    public DashboardService(DashboardRepository dashboardRepository, LedgerRepository ledger, CustomerService customers) {
-        this.dashboardRepository = dashboardRepository;
+    public DashboardService(CustomerRepository customersRepository, CommitmentRepository commitments,
+                            LedgerService ledger, CustomerService customers) {
+        this.customersRepository = customersRepository;
+        this.commitments = commitments;
         this.ledger = ledger;
         this.customers = customers;
     }
@@ -29,7 +32,7 @@ public class DashboardService {
     public DashboardResponse get(String businessId, LocalDate requestedDate) {
         LocalDate today = requestedDate == null ? ledger.businessDate(businessId) : requestedDate;
         if (today.isAfter(ledger.businessDate(businessId))) today = ledger.businessDate(businessId);
-        List<Long> ids = dashboardRepository.findCustomerIds(businessId);
+        List<Long> ids = customersRepository.findIdsByBusinessIdOrderByCreatedAtDescIdDesc(businessId);
         BigDecimal totalOutstanding = MoneyAmounts.zero();
         int customersWithOutstanding = 0;
         BigDecimal dueTodayAmount = MoneyAmounts.zero();
@@ -42,7 +45,7 @@ public class DashboardService {
             BigDecimal outstanding = ledger.outstanding(businessId, id);
             totalOutstanding = totalOutstanding.add(outstanding);
             if (outstanding.signum() > 0) customersWithOutstanding++;
-            List<CommitmentSummary> promises = dashboardRepository.findActivePromises(businessId, id, today);
+            List<CommitmentSummary> promises = commitments.findActiveSummaries(businessId, id, today);
             BigDecimal activeRemaining = MoneyAmounts.zero();
             for (CommitmentSummary promise : promises) {
                 BigDecimal remaining = new BigDecimal(promise.remaining());

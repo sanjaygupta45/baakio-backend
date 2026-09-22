@@ -10,9 +10,8 @@ import com.baakio.dto.scan.ScanResponse;
 import com.baakio.dto.scan.ScanUploadResponse;
 import com.baakio.ai.ScanDraft;
 import com.baakio.ai.ScanDraftLine;
-import com.baakio.repository.ScanDraftRecord;
-import com.baakio.repository.ScanJobRecord;
-import com.baakio.repository.ScanRepository;
+import com.baakio.dto.scan.ScanDraftRecord;
+import com.baakio.dto.scan.ScanJobRecord;
 import com.baakio.security.AccountHolderPrincipal;
 import com.baakio.service.CustomerService;
 import com.baakio.service.FinancialPostingService;
@@ -42,14 +41,14 @@ import java.util.UUID;
 public class BillScanService {
     private static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
     private static final int MAX_IMAGE_DIMENSION = 10_000;
-    private final ScanRepository scans;
+    private final ScanPersistenceService scans;
     private final CustomerService customers;
     private final DocumentStorage storage;
     private final FinancialPostingService postings;
     private final IdempotencyService idempotency;
     private final ObjectMapper mapper;
 
-    public BillScanService(ScanRepository scans, CustomerService customers, DocumentStorage storage,
+    public BillScanService(ScanPersistenceService scans, CustomerService customers, DocumentStorage storage,
                                   FinancialPostingService postings, IdempotencyService idempotency,
                                   ObjectMapper mapper) {
         this.scans = scans;

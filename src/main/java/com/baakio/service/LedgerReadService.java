@@ -7,8 +7,10 @@ import com.baakio.dto.ledger.PurchasePage;
 import com.baakio.model.AccountOpeningBalance;
 import com.baakio.model.Payment;
 import com.baakio.model.Purchase;
-import com.baakio.repository.LedgerReadRepository;
-import com.baakio.repository.LedgerRepository;
+import com.baakio.repository.AccountOpeningBalanceRepository;
+import com.baakio.repository.PaymentRepository;
+import com.baakio.repository.PurchaseRepository;
+import org.springframework.data.domain.PageRequest;
 import com.baakio.exception.ApiException;
 import com.baakio.utils.MoneyAmounts;
 import org.springframework.http.HttpStatus;
@@ -23,12 +25,18 @@ import java.util.List;
 
 @Service
 public class LedgerReadService {
-    private final LedgerReadRepository reads;
-    private final LedgerRepository ledger;
+    private final PurchaseRepository purchases;
+    private final PaymentRepository payments;
+    private final AccountOpeningBalanceRepository openings;
+    private final LedgerService ledger;
     private final FinancialPostingService postings;
 
-    public LedgerReadService(LedgerReadRepository reads, LedgerRepository ledger, FinancialPostingService postings) {
-        this.reads = reads;
+    public LedgerReadService(PurchaseRepository purchases, PaymentRepository payments,
+                             AccountOpeningBalanceRepository openings, LedgerService ledger,
+                             FinancialPostingService postings) {
+        this.purchases = purchases;
+        this.payments = payments;
+        this.openings = openings;
         this.ledger = ledger;
         this.postings = postings;
     }
@@ -43,8 +51,8 @@ public class LedgerReadService {
 
         BigDecimal opening = openingAt(businessId, customerId, periodStart);
         BigDecimal openingMovement = openingMovement(businessId, customerId, periodStart, periodEnd);
-        BigDecimal purchases = reads.sumPurchasesBetween(businessId, customerId, periodStart, periodEnd);
-        BigDecimal payments = reads.sumPaymentsBetween(businessId, customerId, periodStart, periodEnd);
+        BigDecimal purchases = this.purchases.sumBetween(businessId, customerId, periodStart, periodEnd);
+        BigDecimal payments = this.payments.sumBetween(businessId, customerId, periodStart, periodEnd);
         BigDecimal openingInPeriod = openingMovement;
         List<LedgerMovement> movements = new ArrayList<>();
         if (openingMovement.signum() > 0) {
@@ -55,12 +63,12 @@ public class LedgerReadService {
                         cutoff, "Opening balance", MoneyAmounts.text(openingMovement), "DEBIT", null, postedAt));
             }
         }
-        for (Purchase purchase : reads.findPurchasesBetween(businessId, customerId, periodStart, periodEnd)) {
+        for (Purchase purchase : this.purchases.findBetween(businessId, customerId, periodStart, periodEnd)) {
             movements.add(new LedgerMovement("PURCHASE", purchase.getId(), purchase.getOccurredOn(),
                     purchase.getDescription(), MoneyAmounts.text(purchase.getTotal()), "DEBIT", null,
                     purchase.getPostedAt()));
         }
-        for (Payment payment : reads.findPaymentsBetween(businessId, customerId, periodStart, periodEnd)) {
+        for (Payment payment : this.payments.findBetween(businessId, customerId, periodStart, periodEnd)) {
             movements.add(new LedgerMovement("PAYMENT", payment.getId(), payment.getOccurredOn(),
                     payment.getReferenceText(), MoneyAmounts.text(payment.getAmount()), "CREDIT",
                     payment.getMethod(), payment.getPostedAt()));
@@ -78,40 +86,40 @@ public class LedgerReadService {
     public PurchasePage purchases(String businessId, long customerId, LocalDate from, LocalDate to, int requestedPage, int requestedSize) {
         int page = Math.max(0, requestedPage);
         int size = Math.max(1, Math.min(requestedSize, 50));
-        long count = reads.countPurchases(businessId, customerId, from, to);
-        List<Long> ids = reads.findPurchaseIds(businessId, customerId, from, to, size, page * size);
+        long count = purchases.countForPeriod(businessId, customerId, from, to);
+        List<Long> ids = purchases.findIdsForPeriod(businessId, customerId, from, to, PageRequest.of(page, size));
         return new PurchasePage(ids.stream().map(id -> postings.purchaseResponse(businessId, customerId, id)).toList(), page, size,
                 count);
     }
 
     public List<PaymentHistoryResponse> payments(String businessId, long customerId) {
-        return reads.findPayments(businessId, customerId).stream().map(this::toPaymentHistory).toList();
+        return payments.findConfirmedByCustomer(businessId, customerId).stream().map(this::toPaymentHistory).toList();
     }
 
     private BigDecimal openingAt(String businessId, long customerId, LocalDate from) {
         BigDecimal amount = ledger.opening(businessId, customerId);
-        AccountOpeningBalance openingRecord = reads.findOpeningBalance(businessId, customerId);
+        AccountOpeningBalance openingRecord = openings.findByBusinessIdAndCustomerId(businessId, customerId).orElse(null);
         LocalDate cutoff = openingRecord == null ? null : openingRecord.getCutoffDate();
         BigDecimal carried = cutoff != null && cutoff.isBefore(from) ? amount : MoneyAmounts.zero();
-        BigDecimal purchases = reads.sumPurchasesBefore(businessId, customerId, from);
-        BigDecimal payments = reads.sumPaymentsBefore(businessId, customerId, from);
+        BigDecimal purchases = this.purchases.sumBefore(businessId, customerId, from);
+        BigDecimal payments = this.payments.sumBefore(businessId, customerId, from);
         return carried.add(purchases).subtract(payments).setScale(2);
     }
 
     private BigDecimal openingMovement(String businessId, long customerId, LocalDate from, LocalDate to) {
-        AccountOpeningBalance opening = reads.findOpeningBalance(businessId, customerId);
+        AccountOpeningBalance opening = openings.findByBusinessIdAndCustomerId(businessId, customerId).orElse(null);
         LocalDate cutoff = opening == null ? null : opening.getCutoffDate();
         if (cutoff == null || cutoff.isBefore(from) || cutoff.isAfter(to)) return MoneyAmounts.zero();
         return ledger.opening(businessId, customerId);
     }
 
     private LocalDate openingCutoff(String businessId, long customerId) {
-        AccountOpeningBalance opening = reads.findOpeningBalance(businessId, customerId);
+        AccountOpeningBalance opening = openings.findByBusinessIdAndCustomerId(businessId, customerId).orElse(null);
         return opening == null ? null : opening.getCutoffDate();
     }
 
     private Instant openingTimestamp(String businessId, long customerId) {
-        AccountOpeningBalance opening = reads.findOpeningBalance(businessId, customerId);
+        AccountOpeningBalance opening = openings.findByBusinessIdAndCustomerId(businessId, customerId).orElse(null);
         return opening == null ? Instant.EPOCH : opening.getPostedAt();
     }
 

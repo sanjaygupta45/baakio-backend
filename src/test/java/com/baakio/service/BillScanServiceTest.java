@@ -4,13 +4,10 @@ import com.baakio.dto.ledger.CreatePurchaseRequest;
 import com.baakio.dto.ledger.PurchaseLineRequest;
 import com.baakio.dto.ledger.PurchaseResponse;
 import com.baakio.exception.ApiException;
-import com.baakio.repository.CustomerRepository;
-import com.baakio.repository.LedgerRepository;
 import com.baakio.dto.scan.ScanConfirmRequest;
 import com.baakio.ai.ScanDraft;
-import com.baakio.repository.ScanDraftRecord;
-import com.baakio.repository.ScanJobRecord;
-import com.baakio.repository.ScanRepository;
+import com.baakio.dto.scan.ScanDraftRecord;
+import com.baakio.dto.scan.ScanJobRecord;
 import com.baakio.security.AccountHolderPrincipal;
 import com.baakio.service.CustomerService;
 import com.baakio.service.FinancialPostingService;
@@ -37,7 +34,7 @@ class BillScanServiceTest {
 
     @Test
     void anotherBusinessCannotReadScanOrItsDraft() {
-        FakeScanRepository scans = new FakeScanRepository(mapper);
+        FakeScanPersistenceService scans = new FakeScanPersistenceService(mapper);
         FakeStorage storage = new FakeStorage();
         ApiException error = assertThrows(ApiException.class, () -> service(scans, storage, new FakePosting(), new FakeIdempotency()).get(owner, 17));
         assertEquals(404, error.status().value());
@@ -47,7 +44,7 @@ class BillScanServiceTest {
 
     @Test
     void confirmationRecomputesLinesAndPostsThroughTheFinancialServiceOnce() throws Exception {
-        FakeScanRepository scans = new FakeScanRepository(mapper);
+        FakeScanPersistenceService scans = new FakeScanPersistenceService(mapper);
         scans.job = job(17, "REVIEW_REQUIRED");
         ScanDraft savedDraft = new ScanDraft(LocalDate.of(2026, 9, 20), "Bill", "0.00", "3.33", "3.33", List.of(), List.of());
         scans.draft = draftRecord(17, 3, null, mapper.writeValueAsString(savedDraft));
@@ -74,7 +71,7 @@ class BillScanServiceTest {
 
     @Test
     void repeatConfirmationForPostedScanReturnsTheSamePurchaseWithoutPostingAgain() {
-        FakeScanRepository scans = new FakeScanRepository(mapper);
+        FakeScanPersistenceService scans = new FakeScanPersistenceService(mapper);
         scans.job = job(17, "POSTED");
         scans.draft = draftRecord(17, 4, 44L, "{}");
         FakePosting postings = new FakePosting();
@@ -89,9 +86,9 @@ class BillScanServiceTest {
         assertEquals(1, postings.purchaseResponseCalls);
     }
 
-    private BillScanService service(FakeScanRepository scans, FakeStorage storage,
+    private BillScanService service(FakeScanPersistenceService scans, FakeStorage storage,
                                            FakePosting postings, FakeIdempotency idempotency) {
-        CustomerService customers = new CustomerService(null, null);
+        CustomerService customers = new CustomerService(null, null, null, null);
         return new BillScanService(scans, customers, storage, postings, idempotency, mapper);
     }
 
@@ -109,7 +106,7 @@ class BillScanServiceTest {
                 "3.33", "0.00", "3.33", "0.00", "3.33", List.of(), Instant.now());
     }
 
-    private static final class FakeScanRepository extends ScanRepository {
+    private static final class FakeScanPersistenceService extends ScanPersistenceService {
         private ScanJobRecord job;
         private ScanDraftRecord draft;
         private int draftReads;
@@ -118,7 +115,7 @@ class BillScanServiceTest {
         private long postedOldVersion;
         private BigDecimal postedTotal;
 
-        private FakeScanRepository(ObjectMapper mapper) { super(null, null, null, null, mapper); }
+        private FakeScanPersistenceService(ObjectMapper mapper) { super(null, null, null, null, mapper); }
 
         @Override public Optional<ScanJobRecord> findForBusiness(String businessId, long id) {
             return job != null && job.id() == id && job.businessId().equals(businessId) ? Optional.of(job) : Optional.empty();
@@ -146,7 +143,7 @@ class BillScanServiceTest {
         private CreatePurchaseRequest lastRequest;
         private String lastKey;
         private PurchaseResponse purchaseResult;
-        private FakePosting() { super(null, null, null); }
+        private FakePosting() { super(null, null, null, null, null, null, null, null, null); }
         @Override public PurchaseResponse postPurchase(AccountHolderPrincipal principal, long customerId, CreatePurchaseRequest request, String key) {
             postCalls++; lastRequest = request; lastKey = key; return purchaseResult;
         }
