@@ -1,0 +1,10 @@
+.git
+.github
+.idea
+.env
+.env.*
+!.env.example
+target
+out
+deploy
+*.log

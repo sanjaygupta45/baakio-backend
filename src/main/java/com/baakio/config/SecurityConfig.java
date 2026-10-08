@@ -34,6 +34,7 @@ public class SecurityConfig {
             .securityContext(context -> context.securityContextRepository(contextRepository))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/actuator/health/liveness", "/actuator/health/readiness").permitAll()
                 .requestMatchers("/api/v1/csrf", "/api/v1/auth/otp/request",
                         "/api/v1/auth/login", "/api/v1/auth/register").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

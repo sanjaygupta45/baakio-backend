@@ -1,0 +1,94 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: baakio
+      MYSQL_USER: baakio
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci", "--default-time-zone=+00:00"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [private]
+
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: baakio
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [private]
+
+  api:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable digest}
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/baakio?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC
+      DB_USER: baakio
+      DB_PASSWORD: ${DB_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: baakio
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      OCI_AUTH_MODE: instance_principal
+      OCI_REGION: ap-mumbai-1
+      OCI_OBJECT_STORAGE_NAMESPACE: ${OCI_OBJECT_STORAGE_NAMESPACE:?Set OCI_OBJECT_STORAGE_NAMESPACE}
+      OCI_OBJECT_STORAGE_BUCKET: ${OCI_OBJECT_STORAGE_BUCKET:?Set OCI_OBJECT_STORAGE_BUCKET}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN}
+      COOKIE_SECURE: "true"
+      OTP_HASH_SECRET: ${OTP_HASH_SECRET:?Set OTP_HASH_SECRET}
+      OTP_CHANNEL: ${OTP_CHANNEL:-SMS}
+      SMS_NOTIFICATION_PROVIDER: fast2sms
+      WHATSAPP_NOTIFICATION_PROVIDER: fast2sms
+      EMAIL_NOTIFICATION_PROVIDER: smtp
+      FAST2SMS_API_KEY: ${FAST2SMS_API_KEY:-}
+      FAST2SMS_OTP_TEMPLATE_ID: ${FAST2SMS_OTP_TEMPLATE_ID:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks: [private, public]
+
+  caddy:
+    image: caddy:2.10-alpine
+    profiles: [public]
+    restart: unless-stopped
+    environment:
+      API_HOSTNAME: ${API_HOSTNAME:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api]
+    networks: [public]
+
+networks:
+  private:
+    internal: true
+  public:
+
+volumes:
+  mysql_data:
+  rabbitmq_data:
+  caddy_data:
+  caddy_config:
