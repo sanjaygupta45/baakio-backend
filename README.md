@@ -21,6 +21,16 @@ Set `GCP_PROJECT_ID`, `GCS_BUCKET`, and `GCP_ADC_HOST_PATH` in `.env` before sta
 
 ## GCP backend deployment
 
+The selected [target architecture](deploy/TARGET_ARCHITECTURE.md) uses a Mumbai
+GCE VM for the API and scan worker, Aiven MySQL in Mumbai, CloudAMQP RabbitMQ
+in AWS Mumbai, and the existing GitHub Actions workflow for releases. The
+first release will be manual. The current Compose and release scripts below
+still run MySQL and RabbitMQ on the VM; they require the changes listed in
+the target architecture before they can deploy the selected managed-service
+stack. No cloud resources have been created yet.
+
+### Existing local-service deployment scripts
+
 Production Compose uses `${DB_PASSWORD}`, `${MYSQL_ROOT_PASSWORD}`, and `${RABBITMQ_PASSWORD}` as environment variable references. They are not password values. Generate the real values on the VM in `/opt/baakio/.env` with mode `0600`; `.env` is ignored by Git. Anyone with Docker daemon access can inspect container environment variables, so restrict VM and Docker group access to deployment operators. This is the review context for the GitGuardian password-reference finding.
 
 The production stack is in `deploy/compose.prod.yaml`: MySQL and RabbitMQ use private Docker networking and persistent volumes, the API binds only to VM localhost, and Caddy is enabled when an API hostname points at the VM. The containers have memory limits sized for an initial 4 GiB VM; check `docker stats` after deployment and increase the VM size if real traffic exceeds these limits. The API uses the GCE VM's attached service account and Application Default Credentials to access a private Cloud Storage bucket. No service account key is stored on the VM. `GET /actuator/health/readiness` checks application readiness, MySQL, RabbitMQ, and bucket access without showing details.

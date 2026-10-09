@@ -2,6 +2,11 @@
 
 Updated: 2026-10-09. This record is for the backend only. All resources are pending; **nothing has been created yet**.
 
+The [managed-service target architecture](TARGET_ARCHITECTURE.md) supersedes
+the all-in-one VM sizing and cost estimate below. The existing production
+Compose and release scripts still implement the older local MySQL and RabbitMQ
+stack; they must be adapted before provisioning for the selected design.
+
 ## Preflight
 
 | Check | Result |
@@ -17,7 +22,7 @@ Updated: 2026-10-09. This record is for the backend only. All resources are pend
 
 Provisioning must wait until the operator confirms the project and links an open billing account. Recheck identity, billing, enabled APIs, and effective creation permissions before creating resources.
 
-## Intended first deployment
+## Previous all-in-one deployment estimate
 
 - One on-demand `e2-medium` Ubuntu VM in `asia-south1` (4 GiB RAM, shared CPU) with a 30 GiB zonal `pd-balanced` boot disk. The Compose services have memory limits for this size. Observe memory after first start and resize if necessary.
 - One private, uniform-access Standard Cloud Storage bucket in `asia-south1` for bill scans. Use public access prevention. Consider disabling default seven-day soft delete for short-lived scans when creating it; no database backups are part of this release.
@@ -25,7 +30,7 @@ Provisioning must wait until the operator confirms the project and links an open
 - One dedicated VM service account with `roles/storage.objectUser` on this bucket and `roles/artifactregistry.reader` on this repository only. Attach it to the VM with the `cloud-platform` scope; store no service-account key.
 - SSH restricted to the operator's IP. The API remains bound to VM localhost. Keep Caddy, public 80/443 ingress, the public API hostname, SMS, OCR, and CI publication/deployment setup for later.
 
-## Expected recurring cost (USD)
+## Previous all-in-one recurring cost estimate (USD)
 
 Assuming 730 hours per month and no discounts, taxes, credits, or unusual traffic:
 
