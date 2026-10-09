@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up Baakio MySQL to private Google Cloud Storage
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/opt/baakio/backup-db.sh
