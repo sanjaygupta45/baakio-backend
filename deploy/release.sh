@@ -43,9 +43,6 @@ check_release() {
 compose "$candidate" config --quiet
 compose "$candidate" up -d mysql rabbitmq
 before="$(schema_rank)"
-if [[ "$before" != 0 ]]; then
-  /opt/baakio/backup-db.sh "$candidate"
-fi
 registry_host="${candidate%%/*}"
 [[ "$registry_host" =~ ^[a-z0-9-]+-docker\.pkg\.dev$ ]] \
   || { echo "Expected an Artifact Registry image digest" >&2; exit 2; }

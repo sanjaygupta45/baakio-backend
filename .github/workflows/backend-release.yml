@@ -75,5 +75,4 @@ jobs:
           install -m 600 deploy/compose.prod.yaml /opt/baakio/compose.prod.yaml
           install -m 600 deploy/Caddyfile /opt/baakio/Caddyfile
           install -m 700 deploy/release.sh /opt/baakio/release.sh
-          install -m 700 deploy/backup-db.sh /opt/baakio/backup-db.sh
           /opt/baakio/release.sh "$IMAGE"
