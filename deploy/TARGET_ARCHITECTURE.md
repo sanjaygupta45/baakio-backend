@@ -1,6 +1,7 @@
 # Backend target architecture: GCP, Aiven MySQL, CloudAMQP RabbitMQ
 
-Status: proposed on 2026-10-09. This design interprets "clouldMQ" as
+Status: selected on 2026-10-09, with `e2-small` as the first VM size. Deployment
+preparation is in progress. This design interprets "clouldMQ" as
 [CloudAMQP](https://www.cloudamqp.com/), the managed RabbitMQ provider discussed
 with the operator. It replaces the earlier plan to run MySQL and RabbitMQ on the
 GCE VM. No cloud or provider resources have been created for this design.
@@ -37,7 +38,7 @@ CI-specific inbound firewall rule is needed.
 
 | Component | Initial choice | Reason and limit |
 | --- | --- | --- |
-| API and scan worker | One GCE VM in `asia-south1`; evaluate `e2-small` (2 GiB) after a memory test, otherwise use `e2-medium` (4 GiB) | The RabbitMQ listener and scheduled outbox relay need a continuously running process. Only the backend container runs on this VM. |
+| API and scan worker | One `e2-small` GCE VM (2 GiB) in `asia-south1`; resize to `e2-medium` (4 GiB) if the memory or sustained CPU checks fail | The RabbitMQ listener and scheduled outbox relay need a continuously running process. Only the backend container runs on this VM. |
 | Boot disk and network | 20-30 GiB zonal `pd-balanced`, attached static external IPv4, SSH limited to the operator IP, API on `127.0.0.1:8080` | The disk holds the OS, Docker images, and logs, but no MySQL or RabbitMQ data. The static address gives Aiven a stable source IP to allowlist and can later serve the API hostname. |
 | MySQL | Aiven for MySQL, region-selectable paid plan in GCP Mumbai (`google-asia-south1`) | The free and $5 Developer plans do not let us choose a region and cannot satisfy the India placement requirement. Allowlist the VM's static IPv4. Confirm the exact Mumbai plan price and backup location in Aiven before ordering. |
 | RabbitMQ | CloudAMQP RabbitMQ in AWS Mumbai (`ap-south-1`) | The free Little Lemur shared plan is suitable for initial validation, subject to its message, queue, and connection limits. Decide on a paid plan before production traffic. |
@@ -74,29 +75,32 @@ place customer data in CI logs or images.
 The first manual deployment uses the same image digest and release script as
 automation. CI setup must not block this initial validation.
 
-## Required repository changes before deployment
+## Repository preparation and remaining checks
 
-- `compose.prod.yaml`: remove local MySQL and RabbitMQ containers, volumes,
-  health dependencies, and root password. Inject the Aiven JDBC URL and
-  CloudAMQP host, port, virtual host, and credentials into the API.
-- `application.properties`: enable verified TLS for JDBC and AMQPS and expose
-  RabbitMQ virtual-host configuration. Keep the readiness dependencies.
-- `release.sh`: stop starting local dependencies and replace its `docker
-  compose exec mysql` Flyway rank query with a TLS-verified query to Aiven.
-  Preserve the migration-aware rollback behavior.
-- `init-env.sh` and production environment documentation: obtain external
-  service credentials from regional Secret Manager; keep nonsecret endpoint
-  settings in the VM configuration. Never commit actual credentials.
+- Production Compose now runs only the API with a 1280 MiB memory limit and
+  builds an Aiven JDBC URL with `VERIFY_IDENTITY`. The JVM heap target is 55%
+  of its container limit. The RabbitMQ connection uses AMQPS with certificate
+  and hostname validation and the CloudAMQP virtual host.
+- The release script now queries Aiven's Flyway rank over verified TLS via a
+  short-lived MySQL client, and never treats a failed rank query as zero.
+  Automatic rollback still requires an unchanged schema rank.
+- The VM environment template accepts external service endpoints and
+  credentials. `prepare-aiven-ca.sh` builds the Java truststore from Aiven's
+  project CA. Actual provider credentials remain unavailable. Copy them into
+  the protected VM environment for the first release; move them to regional
+  Secret Manager and grant per-secret read access before normal operations.
 - Verify external connectivity, schema migration, queue declaration,
   publisher confirm, readiness, CSRF, and protected API behavior before
-  enabling automatic deploys.
+  enabling automatic deploys. Record `docker stats`, host available memory,
+  swap activity, and CPU throttling during startup and representative scans;
+  resize to `e2-medium` if `e2-small` cannot remain healthy.
 
 ## Cost boundary
 
 The earlier all-in-one Mumbai VM estimate was about $36.63/month before usage.
-With the database and broker managed externally, a successful `e2-small` memory
-test could lower the GCP VM/disk/IP baseline to roughly $21-22/month; an
-`e2-medium` keeps the roughly $36.63/month GCP baseline. Aiven's first
+With the database and broker managed externally, the selected `e2-small` gives
+a GCP VM/disk/IP baseline of roughly $21-22/month; resizing to `e2-medium`
+would bring it to roughly $36.63/month. Aiven's first
 region-selectable MySQL plan starts at $19/month, with the actual GCP Mumbai
 quote to be confirmed. CloudAMQP Little Lemur is free within its development
 limits; the next shared plan starts at $19/month. Thus a low-cost initial

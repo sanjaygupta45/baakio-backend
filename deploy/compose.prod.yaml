@@ -1,56 +1,22 @@
 services:
-  mysql:
-    image: mysql:8.4
-    restart: unless-stopped
-    mem_limit: 1024m
-    environment:
-      MYSQL_DATABASE: baakio
-      MYSQL_USER: baakio
-      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
-    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci", "--default-time-zone=+00:00"]
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-    networks: [private]
-
-  rabbitmq:
-    image: rabbitmq:4.1-management
-    restart: unless-stopped
-    mem_limit: 512m
-    environment:
-      RABBITMQ_DEFAULT_USER: baakio
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD}
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-    networks: [private]
-
   api:
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable digest}
     restart: unless-stopped
-    mem_limit: 1536m
-    depends_on:
-      mysql:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+    mem_limit: 1280m
     environment:
       PORT: 8080
-      DB_URL: jdbc:mysql://mysql:3306/baakio?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC
-      DB_USER: baakio
-      DB_PASSWORD: ${DB_PASSWORD}
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: baakio
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      DB_URL: jdbc:mysql://${DB_HOST:?Set Aiven DB_HOST}:${DB_PORT:?Set Aiven DB_PORT}/${DB_NAME:?Set Aiven DB_NAME}?sslMode=VERIFY_IDENTITY&trustCertificateKeyStoreUrl=file:/run/baakio/aiven-truststore.p12&trustCertificateKeyStoreType=PKCS12&trustCertificateKeyStorePassword=${AIVEN_TRUSTSTORE_PASSWORD:?Set AIVEN_TRUSTSTORE_PASSWORD}&connectionTimeZone=UTC
+      DB_HOST: ${DB_HOST:?Set Aiven DB_HOST}
+      DB_PORT: ${DB_PORT:?Set Aiven DB_PORT}
+      DB_NAME: ${DB_NAME:?Set Aiven DB_NAME}
+      DB_USER: ${DB_USER:?Set Aiven DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?Set Aiven DB_PASSWORD}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:?Set CloudAMQP RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:?Set CloudAMQP AMQPS port}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:?Set CloudAMQP virtual host}
+      RABBITMQ_USER: ${RABBITMQ_USER:?Set CloudAMQP user}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set CloudAMQP password}
+      RABBITMQ_SSL_ENABLED: "true"
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:?Set GCP_PROJECT_ID}
       GCS_BUCKET: ${GCS_BUCKET:?Set GCS_BUCKET}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN}
@@ -63,9 +29,12 @@ services:
       FAST2SMS_API_KEY: ${FAST2SMS_API_KEY:-}
       FAST2SMS_OTP_TEMPLATE_ID: ${FAST2SMS_OTP_TEMPLATE_ID:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+    volumes:
+      - ${AIVEN_CA_HOST_PATH:?Set AIVEN_CA_HOST_PATH}:/run/baakio/aiven-ca.pem:ro
+      - ${AIVEN_TRUSTSTORE_HOST_PATH:?Set AIVEN_TRUSTSTORE_HOST_PATH}:/run/baakio/aiven-truststore.p12:ro
     ports:
       - "127.0.0.1:8080:8080"
-    networks: [private, public]
+    networks: [public]
 
   caddy:
     image: caddy:2.10-alpine
@@ -85,12 +54,8 @@ services:
     networks: [public]
 
 networks:
-  private:
-    internal: true
   public:
 
 volumes:
-  mysql_data:
-  rabbitmq_data:
   caddy_data:
   caddy_config:

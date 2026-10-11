@@ -9,9 +9,19 @@ fi
 
 umask 077
 cat > .env <<EOF
-DB_PASSWORD=$(openssl rand -hex 32)
-MYSQL_ROOT_PASSWORD=$(openssl rand -hex 32)
-RABBITMQ_PASSWORD=$(openssl rand -hex 32)
+DB_HOST=
+DB_PORT=
+DB_NAME=baakio
+DB_USER=
+DB_PASSWORD=
+AIVEN_CA_HOST_PATH=/opt/baakio/certs/aiven-ca.pem
+AIVEN_TRUSTSTORE_HOST_PATH=/opt/baakio/certs/aiven-truststore.p12
+AIVEN_TRUSTSTORE_PASSWORD=$(openssl rand -hex 24)
+RABBITMQ_HOST=
+RABBITMQ_PORT=5671
+RABBITMQ_VHOST=
+RABBITMQ_USER=
+RABBITMQ_PASSWORD=
 OTP_HASH_SECRET=$(openssl rand -hex 48)
 GCP_PROJECT_ID=
 GCS_BUCKET=
@@ -22,4 +32,4 @@ FAST2SMS_OTP_TEMPLATE_ID=
 MISTRAL_API_KEY=
 EOF
 chmod 600 .env
-echo "Created /opt/baakio/.env with generated secrets. Set real HTTPS origins and provider credentials before public use."
+echo "Created /opt/baakio/.env with an OTP secret. Set the Aiven and CloudAMQP endpoints, credentials, CA files, and GCP settings before release."

@@ -20,9 +20,7 @@ compose() {
 }
 
 schema_rank() {
-  compose "$candidate" exec -T mysql sh -ec \
-    'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" "$MYSQL_DATABASE" -Nse "SELECT COALESCE(MAX(installed_rank),0) FROM flyway_schema_history"' \
-    2>/dev/null || echo 0
+  compose "$candidate" config --format json | python3 /opt/baakio/schema-rank.py
 }
 
 check_release() {
@@ -41,11 +39,10 @@ check_release() {
 }
 
 compose "$candidate" config --quiet
-compose "$candidate" up -d mysql rabbitmq
-before="$(schema_rank)"
 registry_host="${candidate%%/*}"
 [[ "$registry_host" =~ ^[a-z0-9-]+-docker\.pkg\.dev$ ]] \
   || { echo "Expected an Artifact Registry image digest" >&2; exit 2; }
+before="$(schema_rank)" || { echo "Aiven schema rank could not be read; release not started" >&2; exit 1; }
 gcloud auth configure-docker "$registry_host" --quiet >/dev/null
 docker pull "$candidate"
 compose "$candidate" up -d --no-deps api
@@ -62,9 +59,9 @@ if check_release; then
   exit 0
 fi
 
-after="$(schema_rank)"
+after="$(schema_rank)" || after="unknown"
 echo "Readiness or API check failed; schema rank $before -> $after" >&2
-if [[ -n "$previous" && ( "$before" == "$after" || "${ROLLBACK_DB_COMPATIBLE:-false}" == true ) ]]; then
+if [[ -n "$previous" && "$after" != unknown && ( "$before" == "$after" || "${ROLLBACK_DB_COMPATIBLE:-false}" == true ) ]]; then
   compose "$previous" up -d --no-deps api
   if check_release; then
     echo "Restored previous app image: $previous" >&2

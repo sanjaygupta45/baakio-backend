@@ -1,26 +1,33 @@
 # GCP backend deployment record
 
-Updated: 2026-10-09. This record is for the backend only. All resources are pending; **nothing has been created yet**.
+Updated: 2026-10-11. This record is for the backend only. All resources are pending; **nothing has been created yet**.
 
 The [managed-service target architecture](TARGET_ARCHITECTURE.md) supersedes
-the all-in-one VM sizing and cost estimate below. The existing production
-Compose and release scripts still implement the older local MySQL and RabbitMQ
-stack; they must be adapted before provisioning for the selected design.
+the all-in-one VM sizing and cost estimate below. Production Compose now runs
+only the API and connects to managed Aiven MySQL and CloudAMQP RabbitMQ.
 
 ## Preflight
 
 | Check | Result |
 | --- | --- |
 | Active `gcloud` account | `sanjaygupta7212@gmail.com` |
-| Likely target project | `baakio` (`350246327891`), awaiting operator confirmation; no default project is selected |
+| Target project | `baakio` (`350246327891`), active; no default project is selected |
 | Project IAM | Active account has direct `roles/owner` on `baakio` |
 | Project billing | `billingEnabled: false`, no linked billing account |
 | Visible billing account | `01BC22-8BBDD4-52C722`, `OPEN: False` |
 | Location | Mumbai, `asia-south1`, per operator preference |
-| Local verification | `mvn -B verify`: 10 tests passed; production Compose config validated with dummy values |
+| Selected VM target | `e2-small` (2 GiB RAM, shared 0.5 vCPU sustained); resize only if release and workload checks require it |
+| Local verification | 2026-10-11: `mvn -B verify` passed all 10 tests; production Compose config, script syntax, and Aiven rank helper validated with dummy values |
 | Resources created | None |
 
-Provisioning must wait until the operator confirms the project and links an open billing account. Recheck identity, billing, enabled APIs, and effective creation permissions before creating resources.
+Provisioning requires an open billing account linked to `baakio`. Recheck
+identity, billing, enabled APIs, and effective creation permissions before
+creating resources.
+
+The `e2-small` decision was selected on 2026-10-09. Its estimated GCP VM,
+disk, and attached IPv4 baseline is about $21-22/month. Production Compose
+now limits the API to 1280 MiB, leaving memory for the OS, Docker, and the
+GitHub runner. This limit still needs validation against a running VM.
 
 ## Previous all-in-one deployment estimate
 
@@ -51,4 +58,11 @@ After deployment, record the actual project, region/zone, VM and IP, bucket, rep
 
 ## GitGuardian review
 
-`deploy/compose.prod.yaml` contains `${DB_PASSWORD}`, `${MYSQL_ROOT_PASSWORD}`, and `${RABBITMQ_PASSWORD}` substitutions, not literal passwords. Real values are generated on the VM in `/opt/baakio/.env` with mode `0600`; `.env` is Git-ignored. VM users with Docker daemon access can inspect container environment variables, so Docker access must stay limited to deployment operators.
+GitGuardian previously flagged password variable references in production
+Compose. The local MySQL root password reference was removed with the local
+database. Current `${DB_PASSWORD}`, `${RABBITMQ_PASSWORD}`, and
+`${AIVEN_TRUSTSTORE_PASSWORD}` entries are variable substitutions, not literal
+credentials. Provider secrets must be placed in `/opt/baakio/.env` with mode
+`0600`; `.env` is Git-ignored. VM users with Docker daemon access can inspect
+container environment variables, so Docker access stays limited to deployment
+operators.

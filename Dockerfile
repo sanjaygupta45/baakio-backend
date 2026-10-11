@@ -8,4 +8,4 @@ WORKDIR /app
 COPY --from=build /workspace/target/baakio-0.1.0.jar app.jar
 EXPOSE 8080
 USER 10001:10001
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=70", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=55", "-jar", "/app/app.jar"]

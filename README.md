@@ -22,26 +22,67 @@ Set `GCP_PROJECT_ID`, `GCS_BUCKET`, and `GCP_ADC_HOST_PATH` in `.env` before sta
 ## GCP backend deployment
 
 The selected [target architecture](deploy/TARGET_ARCHITECTURE.md) uses a Mumbai
-GCE VM for the API and scan worker, Aiven MySQL in Mumbai, CloudAMQP RabbitMQ
-in AWS Mumbai, and the existing GitHub Actions workflow for releases. The
-first release will be manual. The current Compose and release scripts below
-still run MySQL and RabbitMQ on the VM; they require the changes listed in
-the target architecture before they can deploy the selected managed-service
-stack. No cloud resources have been created yet.
+`e2-small` GCE VM for the API and scan worker, Aiven MySQL in Mumbai,
+CloudAMQP RabbitMQ in AWS Mumbai, and the existing GitHub Actions workflow
+for releases. The first release is manual. No cloud resources have been
+created yet; project `baakio` still needs active billing.
 
-### Existing local-service deployment scripts
+`deploy/compose.prod.yaml` runs only the backend container, capped at 1280 MiB
+so the 2 GiB VM has room for Ubuntu, Docker, and the GitHub runner. It binds
+the API to `127.0.0.1:8080`. The optional Caddy profile stays off until the
+public hostname is configured. Readiness checks the API, Aiven MySQL,
+CloudAMQP RabbitMQ, and the private Cloud Storage bucket. Measure host memory,
+swap, and CPU during startup and scans; resize to `e2-medium` if necessary.
 
-Production Compose uses `${DB_PASSWORD}`, `${MYSQL_ROOT_PASSWORD}`, and `${RABBITMQ_PASSWORD}` as environment variable references. They are not password values. Generate the real values on the VM in `/opt/baakio/.env` with mode `0600`; `.env` is ignored by Git. Anyone with Docker daemon access can inspect container environment variables, so restrict VM and Docker group access to deployment operators. This is the review context for the GitGuardian password-reference finding.
+Provision a private Mumbai scan bucket, private Mumbai Docker Artifact Registry
+repository, and a dedicated VM service account. Grant it bucket
+`roles/storage.objectUser`, repository `roles/artifactregistry.reader`, and
+Secret Manager accessor only on the secrets it reads. Attach the service
+account to the VM with the `cloud-platform` scope. Give the VM a static external
+IPv4 so Aiven can allowlist that single source address. Restrict SSH to the
+operator's IP and leave API port 8080 and ports 80/443 closed for the first
+release.
 
-The production stack is in `deploy/compose.prod.yaml`: MySQL and RabbitMQ use private Docker networking and persistent volumes, the API binds only to VM localhost, and Caddy is enabled when an API hostname points at the VM. The containers have memory limits sized for an initial 4 GiB VM; check `docker stats` after deployment and increase the VM size if real traffic exceeds these limits. The API uses the GCE VM's attached service account and Application Default Credentials to access a private Cloud Storage bucket. No service account key is stored on the VM. `GET /actuator/health/readiness` checks application readiness, MySQL, RabbitMQ, and bucket access without showing details.
+On an Ubuntu 24.04 VM, run `sudo bash deploy/bootstrap-vm.sh` from a checkout,
+reconnect as the SSH user, and install the files from `deploy/` under
+`/opt/baakio`. Run `/opt/baakio/init-env.sh` once. Fill the generated
+`/opt/baakio/.env` (mode `0600`) with the Aiven host, port, database, user,
+password, and CloudAMQP AMQPS endpoint, virtual host, user, and password.
+Download Aiven's project CA certificate to
+the VM and run `/opt/baakio/prepare-aiven-ca.sh /path/to/Aiven-project-CA.pem` to
+create the CA and PKCS12 truststore under `/opt/baakio/certs`, using the
+generated `AIVEN_TRUSTSTORE_PASSWORD`. Both files are readable by the API container.
+Compose builds a JDBC URL with `sslMode=VERIFY_IDENTITY`; the RabbitMQ client
+uses TLS with certificate and hostname checks. Set `GCP_PROJECT_ID`,
+`GCS_BUCKET`, and `FRONTEND_ORIGIN` before release. Keep SMS and OCR credentials
+unset for the first private API check.
 
-Create a GCP project with billing, a private Cloud Storage bucket for scans, and a private Docker Artifact Registry repository. Use a dedicated VM service account with `roles/storage.objectUser` on that bucket and `roles/artifactregistry.reader` on that repository. Attach it to an Ubuntu GCE VM with the `cloud-platform` access scope; limit actual access with those IAM roles. Choose the VM size after checking the memory needed for Java, MySQL, and RabbitMQ. Allow SSH only from the operator's IP. Open ports 80/443 when enabling Caddy after DNS is ready; do not expose 8080, MySQL, or RabbitMQ. Run `sudo bash deploy/bootstrap-vm.sh` from the VM SSH account, reconnect as that account, place the deployment files in `/opt/baakio`, and create `/opt/baakio/.env` from `deploy/env.production.example` with mode `0600` (or run `deploy/init-env.sh` once). Set `GCP_PROJECT_ID` and `GCS_BUCKET`, a unique 32+ character `OTP_HASH_SECRET`, and random database and RabbitMQ passwords. Use an exact HTTPS `FRONTEND_ORIGIN` before public browser traffic. Keep the Caddy profile off until DNS points to the VM; then set `API_HOSTNAME` and start Caddy with `BACKEND_IMAGE="$(cat /opt/baakio/state/current-image)" docker compose --env-file .env -f compose.prod.yaml --profile public up -d caddy` from `/opt/baakio`.
+For a manual release, run `mvn -B verify`, publish an amd64 image to Artifact
+Registry, resolve its `sha256` digest, and run `/opt/baakio/release.sh
+REGION-docker.pkg.dev/PROJECT/REPOSITORY/backend@sha256:<digest>` on the VM.
+Install `compose.prod.yaml`, `Caddyfile`, `init-env.sh`,
+`prepare-aiven-ca.sh`, `release.sh`, and `schema-rank.py` in `/opt/baakio`
+first. The release script reads the Aiven Flyway rank over
+verified TLS, pulls the exact image, then checks readiness, CSRF bootstrap,
+and unauthenticated API protection over localhost. It records the successful
+digest. On failure it restores the prior image only when the schema rank is
+unchanged, or after an operator explicitly confirms migration compatibility;
+otherwise it stops the API for controlled recovery.
 
-For a manual release, run `mvn -B verify`, publish an amd64 image to Artifact Registry, resolve its `sha256` digest, and execute `/opt/baakio/release.sh REGION-docker.pkg.dev/PROJECT/REPOSITORY/backend@sha256:<digest>` on the VM. The release script configures the gcloud Docker credential helper, pulls that exact digest, starts dependencies, and requires readiness, CSRF bootstrap, and unauthenticated API protection to pass. It records successful releases in `/opt/baakio/state/releases.log`. On failure, it restores the previous app image if no new Flyway migration was applied. If a migration was applied, it stops the API and writes `state/RECOVERY_REQUIRED` for controlled recovery; an operator may set `ROLLBACK_DB_COMPATIBLE=true` only after reviewing the migration.
+The existing `.github/workflows/backend-release.yml` runs Maven verification
+for pull requests and on `main`. After the manual release succeeds, configure
+GitHub OIDC and GCP Workload Identity Federation for a publisher identity with
+repository `roles/artifactregistry.writer`, restricted to this repository's
+`main` branch. The production deployment job runs on a `baakio-backend` runner
+on the VM and deploys the published image digest. GitHub repository variables
+are `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_ARTIFACT_REPOSITORY`,
+`GCP_WIF_PROVIDER`, and `GCP_PUBLISHER_SERVICE_ACCOUNT`.
 
-`.github/workflows/backend-release.yml` runs Maven verification for pull requests and on `main`. A passing push uses GitHub OIDC and GCP Workload Identity Federation to publish an amd64 image, then a self hosted `baakio-backend` runner on the VM deploys its exact digest. Configure a publisher service account with `roles/artifactregistry.writer` on the repository and a Workload Identity provider restricted to this GitHub repository's `main` branch. Set repository variables `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_ARTIFACT_REPOSITORY`, `GCP_WIF_PROVIDER`, and `GCP_PUBLISHER_SERVICE_ACCOUNT`. Register the runner and require the `test` job before merging pull requests. No long-lived GCP key or registry password is needed. SMS OTP needs the production Fast2SMS key and approved template ID in `/opt/baakio/.env`; OCR remains unavailable until `MISTRAL_API_KEY` is set.
-
-The Docker Compose ports bind to localhost. The `dev` profile uses OTP `222222`, returns that code to the local client, and logs only masked notification metadata. It does not send real SMS, WhatsApp, or email. For production, do not activate `dev`; provide `DB_URL`, `DB_USER`, `DB_PASSWORD`, `FRONTEND_ORIGIN`, and a random `OTP_HASH_SECRET` through the deployment environment, set real provider credentials as needed, and use `COOKIE_SECURE=true` behind HTTPS. `.env.example` contains local-development values only; do not use them for real data.
+The GitGuardian finding concerned Compose password variable references, not
+literal passwords. Production credentials stay out of Git in the VM's `0600`
+environment file; users with Docker daemon access can still inspect container
+environment variables, so limit Docker access to deployment operators.
+`.env.example` remains for local development only.
 
 ## Backend implementation
 

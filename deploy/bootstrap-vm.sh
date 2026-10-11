@@ -13,7 +13,7 @@ if [[ -z "$operator" || "$operator" == root ]]; then
 fi
 
 apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg python3
+DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg openssl openjdk-21-jre-headless python3
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
