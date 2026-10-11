@@ -10,7 +10,7 @@ Spring Boot REST API for the Baakio shop ledger. This app owns authentication, s
 4. Register an account holder and business in the client. The local `dev` profile accepts `222222` as the OTP.
 
 The example Compose setup publishes MySQL on `127.0.0.1:3307` to avoid conflicts with a local MySQL server. Change `MYSQL_HOST_PORT` if that port is already in use.
-Set the OCI Object Storage values in `.env` before starting the API. Scan images always use a private OCI Object Storage bucket; without a valid OCI config and bucket, the API will fail fast during startup. Set `MISTRAL_API_KEY` to enable bill extraction. Without a key, uploaded jobs become `FAILED` and the shopkeeper can use manual purchase entry.
+Set `GCP_PROJECT_ID`, `GCS_BUCKET`, and `GCP_ADC_HOST_PATH` in `.env` before starting the API. Use a private development bucket separate from production. Run `gcloud auth application-default login` on the host to create the ADC file and set `LOCAL_UID` to `id -u` so the container can read it. Scan images always use private Google Cloud Storage. Set `MISTRAL_API_KEY` to enable bill extraction. Without a key, uploaded jobs become `FAILED` and the shopkeeper can use manual purchase entry.
 
 ## Maven commands
 
@@ -37,7 +37,7 @@ The Docker Compose ports bind to localhost. The `dev` profile uses OTP `222222`,
 - Financial POSTs require `Idempotency-Key`, lock the customer row, validate the current balance, write the event and audit row in one transaction, and return fresh server-computed balances.
 - Itemized totals use `BigDecimal`; line totals round to paise with `HALF_UP`. Payments and promise allocations are checked independently so allocations do not reduce debt twice.
 - Bill scans use MySQL `scan_job`, `scan_draft`, `scan_attempt`, and `outbox_event` tables. The outbox relay marks an event published only after a RabbitMQ publisher confirm and successful routing. Duplicate deliveries are guarded by a processing claim; stale claims are retried up to three times.
-- Scan images are private OCI Object Storage objects in every environment. The OCI adapter uses config-file credentials plus namespace, bucket, and region settings. Never make the OCI bucket public. The retention job deletes unkept images after `SCAN_RETENTION_DAYS` (30 by default).
+- Scan images are private Google Cloud Storage objects in every environment. Local development uses Google ADC; GCE production uses its attached service account. Never make the bucket public. The retention job deletes unkept images after `SCAN_RETENTION_DAYS` (30 by default).
 - The `ai` layer owns Mistral extraction, bounded retries, field validation, and editable draft calculation. The service worker owns storage retrieval and persistence; the AI layer never posts financial records.
 - Mistral OCR only proposes fields. Draft totals and final line totals are recalculated in the application; confirmation calls the existing financial purchase posting service and changes outstanding only after that transaction commits. The shopkeeper must explicitly confirm any `paidNow` amount.
 - RabbitMQ is the scan queue. Redis is included in Compose only for optional disposable read caching; it is not used for ledger or balance decisions.
@@ -77,6 +77,6 @@ Scan upload requires `Idempotency-Key`; the multipart form may include `keepAtta
 
 For non-dev deployments, configure `OTP_HASH_SECRET`, `FAST2SMS_API_KEY`, and an approved `FAST2SMS_OTP_TEMPLATE_ID`. Configure `OTP_CHANNEL=SMS` to send codes over SMS or `OTP_CHANNEL=WHATSAPP` with the approved WhatsApp phone number ID and template. Email notification delivery is available through Spring Mail; the current phone authentication flow sends OTPs through SMS or WhatsApp. Route SMS, WhatsApp, and email by setting `SMS_NOTIFICATION_PROVIDER`, `WHATSAPP_NOTIFICATION_PROVIDER`, and `EMAIL_NOTIFICATION_PROVIDER` to a registered provider ID.
 
-For document storage, set `OCI_CONFIG_FILE` (or mount the standard OCI config path), `OCI_PROFILE`, `OCI_REGION`, `OCI_OBJECT_STORAGE_NAMESPACE`, and `OCI_OBJECT_STORAGE_BUCKET`. Grant the API identity only the required object read/write/delete permissions on the private bucket. Set `MISTRAL_API_KEY` to activate OCR extraction.
+For document storage, set `GCP_PROJECT_ID` and `GCS_BUCKET`. Local development uses `GCP_ADC_HOST_PATH` in Compose; GCE uses its attached service account. Grant the API identity only the required object read/write/delete permissions on the private bucket. Set `MISTRAL_API_KEY` to activate OCR extraction.
 
 See the design pack at `../baakio-design-pack` for the product, UX, and domain rules.
