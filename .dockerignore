@@ -1,0 +1,9 @@
+.git
+.github
+.idea
+.env*
+!.env.example
+target
+out
+gha-creds-*.json
+*.iml

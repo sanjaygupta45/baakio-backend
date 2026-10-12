@@ -1,5 +1,6 @@
 .env
 /target/
+gha-creds-*.json
 
 ### STS ###
 .apt_generated

@@ -1,0 +1,70 @@
+name: Deploy backend to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: baakio-api-production
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: baakio-511105
+  REGION: asia-south1
+  SERVICE: baakio-api
+  IMAGE: asia-south1-docker.pkg.dev/baakio-511105/baakio/api:${{ github.sha }}
+  FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN || 'https://frontend.invalid' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Verify backend
+        run: mvn -B verify
+
+      - name: Build container
+        run: docker build --tag "$IMAGE" .
+
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: projects/875723800928/locations/global/workloadIdentityPools/baakio-github/providers/backend-main
+          service_account: baakio-github-deploy@baakio-511105.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Push image
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker push "$IMAGE"
+
+      - name: Deploy backend
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --project "$PROJECT_ID" \
+            --region "$REGION" \
+            --image "$IMAGE" \
+            --service-account "baakio-api-runtime@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --port 8080 \
+            --cpu 1 \
+            --memory 1Gi \
+            --concurrency 20 \
+            --min-instances 1 \
+            --max-instances 1 \
+            --no-cpu-throttling \
+            --update-env-vars "GCP_PROJECT_ID=${PROJECT_ID},GCS_BUCKET=baakio-511105-documents,FRONTEND_ORIGIN=${FRONTEND_ORIGIN},COOKIE_SECURE=true" \
+            --update-secrets "DB_URL=baakio-db-url:latest,DB_USER=baakio-db-user:latest,DB_PASSWORD=baakio-db-password:latest,SPRING_RABBITMQ_ADDRESSES=baakio-amqp-addresses:latest,OTP_HASH_SECRET=baakio-otp-hash-secret:latest" \
+            --quiet

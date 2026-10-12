@@ -1,5 +1,38 @@
 # Baakio backend
 
+## Cloud Run deployment
+
+The backend deploys from GitHub Actions whenever `main` is pushed, and can also be
+started with **Run workflow**. The workflow runs the Maven test suite, builds the
+container, pushes it to Artifact Registry, and updates the `baakio-api` Cloud Run
+service in project `baakio-511105` (`asia-south1`). GitHub authenticates through
+Workload Identity Federation; no service-account key is stored in GitHub.
+
+Production resources are the `baakio` Artifact Registry repository, private
+`gs://baakio-511105-documents` bucket, and Secret Manager secrets named
+`baakio-db-url`, `baakio-db-user`, `baakio-db-password`,
+`baakio-amqp-addresses`, and `baakio-otp-hash-secret`. The Cloud Run runtime
+identity can read only those secrets and manage objects in that bucket. MySQL
+is configured with a JDBC URL and TLS required; RabbitMQ uses the managed
+`amqps://` address. Redis is not used by the current backend.
+
+The API's scheduled jobs and RabbitMQ listener require CPU between HTTP
+requests. The workflow therefore keeps one Cloud Run instance running with
+instance-based billing. This incurs ongoing Cloud Run charges.
+
+Before the frontend is hosted, the workflow uses `https://frontend.invalid`
+for `FRONTEND_ORIGIN`. Once the frontend has a public HTTPS URL, set the
+repository variable `FRONTEND_ORIGIN` to its exact origin and rerun the workflow.
+Keep `VITE_API_BASE_URL` and cookie behavior aligned with the frontend hosting
+plan; separate Cloud Run hostnames require a same-origin API proxy or a shared
+site domain for browser sessions.
+
+OTP delivery additionally needs `FAST2SMS_API_KEY` and an approved
+`FAST2SMS_OTP_TEMPLATE_ID`; bill scanning needs `MISTRAL_API_KEY`. Store these
+in Secret Manager and attach them to the Cloud Run service before relying on
+those features. If Aiven restricts inbound IP addresses, Cloud Run will also
+need fixed outbound IP routing allowed by Aiven.
+
 Spring Boot REST API for the Baakio shop ledger. This app owns authentication, shop scoping, money calculations, and persistence. MySQL is the source of truth; posted purchases and confirmed payments are append-only in this first slice.
 
 ## Local run
