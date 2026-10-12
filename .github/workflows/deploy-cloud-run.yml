@@ -38,25 +38,34 @@ jobs:
       - name: Build container
         run: docker build --tag "$IMAGE" .
 
-      - uses: google-github-actions/auth@v3
+      - id: google-auth
+        uses: google-github-actions/auth@v3
         with:
           project_id: ${{ env.PROJECT_ID }}
           workload_identity_provider: projects/875723800928/locations/global/workloadIdentityPools/baakio-github/providers/backend-main
           service_account: baakio-github-deploy@baakio-511105.iam.gserviceaccount.com
+          token_format: access_token
 
       - uses: google-github-actions/setup-gcloud@v3
 
-      - name: Verify Google credentials
-        run: gcloud auth print-access-token >/dev/null
+      - name: Prepare Google access token
+        env:
+          GOOGLE_ACCESS_TOKEN: ${{ steps.google-auth.outputs.access_token }}
+        run: |
+          umask 077
+          printf '%s' "$GOOGLE_ACCESS_TOKEN" > "$RUNNER_TEMP/baakio-gcp-token"
+          echo "GOOGLE_TOKEN_FILE=$RUNNER_TEMP/baakio-gcp-token" >> "$GITHUB_ENV"
 
       - name: Push image
         run: |
-          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker login "https://${REGION}-docker.pkg.dev" \
+            --username oauth2accesstoken \
+            --password-stdin < "$GOOGLE_TOKEN_FILE"
           docker push "$IMAGE"
 
       - name: Deploy backend
         run: |
-          gcloud run deploy "$SERVICE" \
+          gcloud --access-token-file="$GOOGLE_TOKEN_FILE" run deploy "$SERVICE" \
             --project "$PROJECT_ID" \
             --region "$REGION" \
             --image "$IMAGE" \
