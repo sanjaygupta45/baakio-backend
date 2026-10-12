@@ -46,6 +46,9 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v3
 
+      - name: Verify Google credentials
+        run: gcloud auth print-access-token >/dev/null
+
       - name: Push image
         run: |
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
