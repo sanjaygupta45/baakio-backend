@@ -31,11 +31,14 @@ DNS propagates. The workflow restricts Cloud Run ingress to the load balancer.
 
 Authentication now uses Google Identity Services and email codes. The Cloud Run
 workflow configures Resend SMTP with the verified `auth.baakio.shop` domain and
-reads the API key from `baakio-resend-smtp-key` in Secret Manager. Google sign-in
-still needs a web client ID authorized for the final frontend origin; set the
-GitHub Actions variable `GOOGLE_CLIENT_ID` when it is available. The frontend
-domain and API routing must be live before browser sign-in is available in
-production.
+reads the API key from `baakio-resend-smtp-key` in Secret Manager. Email
+authentication messages use the branded HTML template in
+`src/main/resources/email/auth-otp.html` with a plain-text alternative. The
+subject and instructions reflect sign-in, registration, or email linking and
+support English and Hindi. The Google OAuth Web client ID is stored in the
+GitHub Actions variable `GOOGLE_CLIENT_ID`. The API hostname is live; the
+frontend still needs hosting at `baakio.shop` before production browser sign-in
+can be tested.
 Leave `LEGACY_PHONE_AUTH_ENABLED=false` in production. Bill scanning reads
 `MISTRAL_API_KEY` from Secret Manager. If Aiven restricts
 inbound IP addresses, Cloud Run will also

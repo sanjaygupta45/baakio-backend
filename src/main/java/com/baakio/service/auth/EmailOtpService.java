@@ -93,7 +93,7 @@ public class EmailOtpService {
         challenges.saveAndFlush(new EmailOtpChallenge(id, email, purpose,
                 hash(id, email, code), now.plusSeconds(expiresSeconds)));
         notifications.send(NotificationChannel.EMAIL,
-                NotificationMessage.otp(email, code, locale, id, expiresSeconds));
+                NotificationMessage.emailOtp(email, code, locale, id, expiresSeconds, purpose));
         return new OtpRequestResponse(id, expiresSeconds, cooldownSeconds,
                 exposeDevelopmentCode ? code : null);
     }

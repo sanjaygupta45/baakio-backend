@@ -1,5 +1,6 @@
 package com.baakio.notification;
 
+import com.baakio.enums.EmailOtpPurpose;
 import com.baakio.enums.NotificationType;
 
 import java.util.List;
@@ -13,7 +14,8 @@ public record NotificationMessage(
         String languageCode,
         List<String> variables,
         Integer expiresInSeconds,
-        String referenceId
+        String referenceId,
+        EmailOtpPurpose emailOtpPurpose
 ) {
     public NotificationMessage {
         variables = variables == null ? List.of() : List.copyOf(variables);
@@ -28,6 +30,16 @@ public record NotificationMessage(
         return new NotificationMessage(recipient, NotificationType.OTP,
                 "Baakio verification code",
                 "Your Baakio verification code is " + code + ". It expires in " + expiry + ".",
-                null, languageCode, List.of(code), expiresInSeconds, referenceId);
+                null, languageCode, List.of(code), expiresInSeconds, referenceId, null);
+    }
+
+    public static NotificationMessage emailOtp(String recipient, String code, String locale,
+                                               String referenceId, int expiresInSeconds,
+                                               EmailOtpPurpose purpose) {
+        String languageCode = "hi-IN".equals(locale) ? "hi" : "en";
+        return new NotificationMessage(recipient, NotificationType.OTP,
+                "Baakio verification code",
+                "Your Baakio verification code is " + code + ".",
+                null, languageCode, List.of(code), expiresInSeconds, referenceId, purpose);
     }
 }
