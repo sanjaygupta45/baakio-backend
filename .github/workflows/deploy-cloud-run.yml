@@ -78,5 +78,5 @@ jobs:
             --max-instances 1 \
             --no-cpu-throttling \
             --update-env-vars "GCP_PROJECT_ID=${PROJECT_ID},GCS_BUCKET=baakio-511105-documents,FRONTEND_ORIGIN=${FRONTEND_ORIGIN},COOKIE_SECURE=true" \
-            --update-secrets "DB_URL=baakio-db-url:latest,DB_USER=baakio-db-user:latest,DB_PASSWORD=baakio-db-password:latest,SPRING_RABBITMQ_ADDRESSES=baakio-amqp-addresses:latest,OTP_HASH_SECRET=baakio-otp-hash-secret:latest" \
+            --update-secrets "DB_URL=baakio-db-url:latest,DB_USER=baakio-db-user:latest,DB_PASSWORD=baakio-db-password:latest,SPRING_RABBITMQ_ADDRESSES=baakio-amqp-addresses:latest,OTP_HASH_SECRET=baakio-otp-hash-secret:latest,MISTRAL_API_KEY=baakio-mistral-api-key:latest" \
             --quiet

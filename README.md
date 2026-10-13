@@ -11,7 +11,8 @@ Workload Identity Federation; no service-account key is stored in GitHub.
 Production resources are the `baakio` Artifact Registry repository, private
 `gs://baakio-511105-documents` bucket, and Secret Manager secrets named
 `baakio-db-url`, `baakio-db-user`, `baakio-db-password`,
-`baakio-amqp-addresses`, and `baakio-otp-hash-secret`. The Cloud Run runtime
+`baakio-amqp-addresses`, `baakio-otp-hash-secret`, and
+`baakio-mistral-api-key`. The Cloud Run runtime
 identity can read only those secrets and manage objects in that bucket. MySQL
 is configured with a JDBC URL and TLS required; RabbitMQ uses the managed
 `amqps://` address. Redis is not used by the current backend.
@@ -28,9 +29,10 @@ plan; separate Cloud Run hostnames require a same-origin API proxy or a shared
 site domain for browser sessions.
 
 OTP delivery additionally needs `FAST2SMS_API_KEY` and an approved
-`FAST2SMS_OTP_TEMPLATE_ID`; bill scanning needs `MISTRAL_API_KEY`. Store these
-in Secret Manager and attach them to the Cloud Run service before relying on
-those features. If Aiven restricts inbound IP addresses, Cloud Run will also
+`FAST2SMS_OTP_TEMPLATE_ID`. Bill scanning reads `MISTRAL_API_KEY` from Secret
+Manager. Store the Fast2SMS credentials in Secret Manager and attach them to
+the Cloud Run service before relying on OTP delivery. If Aiven restricts
+inbound IP addresses, Cloud Run will also
 need fixed outbound IP routing allowed by Aiven.
 
 Spring Boot REST API for the Baakio shop ledger. This app owns authentication, shop scoping, money calculations, and persistence. MySQL is the source of truth; posted purchases and confirmed payments are append-only in this first slice.
