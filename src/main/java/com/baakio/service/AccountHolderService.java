@@ -17,7 +17,8 @@ public class AccountHolderService {
     }
 
     public AccountHolderResponse accountHolder(AccountHolderPrincipal principal) {
-        return new AccountHolderResponse(principal.id(), principal.phoneNumber(), principal.email(), principal.displayName(),
+        var current = accountHolders.findById(principal.id()).orElseThrow(ApiException::notFound);
+        return new AccountHolderResponse(principal.id(), current.getPhoneE164(), current.getEmail(), current.getDisplayName(),
                 principal.businessId(), principal.businessName(), preferredLocale(principal.id()));
     }
 
@@ -29,6 +30,14 @@ public class AccountHolderService {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "ACCOUNT_HOLDER_NOT_FOUND",
                     "No account holder is registered with this phone number. Create an account first.");
         }
+        return principal;
+    }
+
+    public AccountHolderPrincipal principalById(String accountHolderId) {
+        AccountHolderPrincipal principal = accountHolders.findActiveById(accountHolderId, PageRequest.of(0, 1))
+                .stream().findFirst().orElse(null);
+        if (principal == null) throw new ApiException(HttpStatus.UNAUTHORIZED, "ACCOUNT_HOLDER_NOT_FOUND",
+                "This account holder is unavailable.");
         return principal;
     }
 

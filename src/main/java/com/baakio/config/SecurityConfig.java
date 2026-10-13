@@ -35,7 +35,10 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/csrf", "/api/v1/auth/otp/request",
-                        "/api/v1/auth/login", "/api/v1/auth/register").permitAll()
+                        "/api/v1/auth/login", "/api/v1/auth/register",
+                        "/api/v1/auth/config", "/api/v1/auth/google",
+                        "/api/v1/auth/email/request", "/api/v1/auth/email/login",
+                        "/api/v1/auth/email/register").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .anyRequest().authenticated())
             .httpBasic(basic -> basic.disable())

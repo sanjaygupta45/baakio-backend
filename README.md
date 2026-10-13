@@ -21,17 +21,23 @@ The API's scheduled jobs and RabbitMQ listener require CPU between HTTP
 requests. The workflow therefore keeps one Cloud Run instance running with
 instance-based billing. This incurs ongoing Cloud Run charges.
 
-Before the frontend is hosted, the workflow uses `https://frontend.invalid`
-for `FRONTEND_ORIGIN`. Once the frontend has a public HTTPS URL, set the
-repository variable `FRONTEND_ORIGIN` to its exact origin and rerun the workflow.
-Keep `VITE_API_BASE_URL` and cookie behavior aligned with the frontend hosting
-plan; separate Cloud Run hostnames require a same-origin API proxy or a shared
-site domain for browser sessions.
+The chosen production browser origin is `https://baakio.shop`; the API hostname
+is `https://api.baakio.shop`. The workflow sets `FRONTEND_ORIGIN` to the browser
+origin, and the frontend production build sets `VITE_API_BASE_URL` to the API
+origin. An external Application Load Balancer routes `api.baakio.shop` to the
+Cloud Run service in `asia-south1`. Add a GoDaddy A record with host `api` and
+value `8.233.193.171`; the Google-managed TLS certificate becomes active after
+DNS propagates. The workflow restricts Cloud Run ingress to the load balancer.
 
-OTP delivery additionally needs `FAST2SMS_API_KEY` and an approved
-`FAST2SMS_OTP_TEMPLATE_ID`. Bill scanning reads `MISTRAL_API_KEY` from Secret
-Manager. Store the Fast2SMS credentials in Secret Manager and attach them to
-the Cloud Run service before relying on OTP delivery. If Aiven restricts
+Authentication now uses Google Identity Services and email codes. The Cloud Run
+workflow configures Resend SMTP with the verified `auth.baakio.shop` domain and
+reads the API key from `baakio-resend-smtp-key` in Secret Manager. Google sign-in
+still needs a web client ID authorized for the final frontend origin; set the
+GitHub Actions variable `GOOGLE_CLIENT_ID` when it is available. The frontend
+domain and API routing must be live before browser sign-in is available in
+production.
+Leave `LEGACY_PHONE_AUTH_ENABLED=false` in production. Bill scanning reads
+`MISTRAL_API_KEY` from Secret Manager. If Aiven restricts
 inbound IP addresses, Cloud Run will also
 need fixed outbound IP routing allowed by Aiven.
 
@@ -42,7 +48,16 @@ Spring Boot REST API for the Baakio shop ledger. This app owns authentication, s
 1. Copy `.env.example` to `.env`.
 2. Start MySQL, RabbitMQ, Redis, and the API with `docker compose up --build`.
 3. Run the separate frontend from `../baakio-fe` with `npm install` and `npm run dev`.
-4. Register an account holder and business in the client. The local `dev` profile accepts `222222` as the OTP.
+4. Register an account holder and business in the client using email. The local `dev` profile displays the code in the UI and sends no email.
+
+For local Google sign-in, create an **OAuth 2.0 Web application** client in the
+Google Cloud Console for project `baakio-511105`. Add both
+`http://localhost:5173` and `http://127.0.0.1:5173` as authorized JavaScript
+origins, then set its **client ID** in `GOOGLE_CLIENT_ID` in `.env`. No client
+secret is used. Google sign-in is hidden when the ID is blank. A domain and
+email delivery account are not needed to test localhost email codes; the dev
+provider returns the code only in the local response. Use the same host spelling
+throughout a browser session so session and CSRF cookies remain available.
 
 The example Compose setup publishes MySQL on `127.0.0.1:3307` to avoid conflicts with a local MySQL server. Change `MYSQL_HOST_PORT` if that port is already in use.
 Set `GCP_PROJECT_ID`, `GCS_BUCKET`, and `GCP_ADC_HOST_PATH` in `.env` before starting the API. Use a private development bucket separate from production. Run `gcloud auth application-default login` on the host to create the ADC file and set `LOCAL_UID` to `id -u` so the container can read it. Scan images always use private Google Cloud Storage. Set `MISTRAL_API_KEY` to enable bill extraction. Without a key, uploaded jobs become `FAILED` and the shopkeeper can use manual purchase entry.
@@ -64,9 +79,9 @@ The Docker Compose ports bind to localhost. The `dev` profile uses OTP `222222`,
 - Controllers handle HTTP binding, DTOs define API contracts, services own validation and transactions, and repositories use Hibernate entity operations and JPQL.
 - Flyway owns schema changes; Hibernate validates entity mappings against the migrated schema at startup and does not create or update tables.
 - Flyway creates `utf8mb4` tables for account holders, businesses, customers, opening balances, purchases/lines, confirmed payments, promises, allocations, idempotency records, and audit events.
-- Account holders authenticate with a one-time code; passwords are not used.
-- Accounts created before the phone migration have no verified phone number. Backfill each account holder's verified number before deploying OTP login to existing data.
-- OTP challenges store an HMAC hash, expire after five minutes by default, allow at most five attempts, and have a resend cooldown and per-phone request limit.
+- Account holders authenticate with a verified Google ID token or a one-time email code; passwords are not used. Google identities use the immutable Google subject, and email identities use the normalized verified address. Matching email addresses are never merged automatically; the signed-in account holder can link another method in Settings.
+- The legacy phone OTP endpoints remain available only when `LEGACY_PHONE_AUTH_ENABLED=true` (local dev can opt in). They are disabled by default in production.
+- Email OTP challenges store an HMAC hash, expire after five minutes by default, allow at most five attempts, and have resend, per-email, and global daily limits. MySQL-backed Spring Session JDBC keeps browser sessions valid across Cloud Run instances.
 - Notifications use a provider strategy behind `NotificationProvider`. `NotificationDispatcher` routes each channel to a configured provider ID, so SMS, WhatsApp, and email implementations can change independently.
 - `Fast2SmsClient` owns the Fast2SMS HTTP contract. The Fast2SMS provider supports the OTP and quick SMS routes plus WhatsApp templates. SMTP email is enabled when `SPRING_MAIL_HOST` is configured.
 - Financial POSTs require `Idempotency-Key`, lock the customer row, validate the current balance, write the event and audit row in one transaction, and return fresh server-computed balances.
@@ -80,14 +95,20 @@ The Docker Compose ports bind to localhost. The `dev` profile uses OTP `222222`,
 
 ## API routes
 
-All routes use `/api/v1`. CSRF bootstrap, OTP requests, login, and registration are public. An account holder signs in and manages a business; each business tracks its own customers, purchases, balances, and payments. Customers are not account holders and do not need to sign in.
+All routes use `/api/v1`. CSRF bootstrap, authentication config, Google and email authentication are public. An account holder signs in and manages a business; each business tracks its own customers, purchases, balances, and payments. Customers are not account holders and do not need to sign in.
 
 | Method | Route | Purpose |
 |---|---|---|
 | GET | `/csrf` | CSRF token bootstrap for browser writes |
-| POST | `/auth/otp/request` | Request a login or registration code with `phoneNumber`, `purpose` (`LOGIN` or `REGISTER`), and `preferredLocale` |
-| POST | `/auth/login` | Verify `phoneNumber`, `challengeId`, and `otp`, then create a session |
-| POST | `/auth/register` | Verify OTP and create an account holder and business with `displayName`, `businessName`, optional `email`, and `preferredLocale` |
+| GET | `/auth/config` | Public Google client ID and enabled authentication methods |
+| POST | `/auth/google` | Verify a Google ID token and sign in or create a shop |
+| POST | `/auth/email/request` | Request an email code with `email`, `purpose` (`LOGIN` or `REGISTER`), and `preferredLocale` |
+| POST | `/auth/email/login` | Verify an email code and sign in |
+| POST | `/auth/email/register` | Verify an email code and create an account holder and shop |
+| POST | `/account-holder/identities/google` | Link a verified Google identity to the current account |
+| POST | `/account-holder/identities/email/request` | Request an email linking code |
+| POST | `/account-holder/identities/email/verify` | Link a verified email identity |
+| POST | `/auth/otp/request`, `/auth/login`, `/auth/register` | Legacy phone OTP routes; off by default outside dev |
 | POST | `/auth/logout` | End the current session |
 | GET | `/account-holder` | Current signed-in account holder and managed business |
 | PATCH | `/account-holder/preferences` | Save the account holder's `en-IN` or `hi-IN` language preference |
@@ -110,7 +131,7 @@ All routes use `/api/v1`. CSRF bootstrap, OTP requests, login, and registration 
 
 Scan upload requires `Idempotency-Key`; the multipart form may include `keepAttachment=true` to retain the original image beyond its review period. Status and image requests return 404 when the scan belongs to another business.
 
-For non-dev deployments, configure `OTP_HASH_SECRET`, `FAST2SMS_API_KEY`, and an approved `FAST2SMS_OTP_TEMPLATE_ID`. Configure `OTP_CHANNEL=SMS` to send codes over SMS or `OTP_CHANNEL=WHATSAPP` with the approved WhatsApp phone number ID and template. Email notification delivery is available through Spring Mail; the current phone authentication flow sends OTPs through SMS or WhatsApp. Route SMS, WhatsApp, and email by setting `SMS_NOTIFICATION_PROVIDER`, `WHATSAPP_NOTIFICATION_PROVIDER`, and `EMAIL_NOTIFICATION_PROVIDER` to a registered provider ID.
+For production, configure `OTP_HASH_SECRET` and `FRONTEND_ORIGIN`. The GitHub Actions workflow enables email codes with Resend SMTP using `login@auth.baakio.shop`; its SMTP password comes from the `baakio-resend-smtp-key` Secret Manager secret. It caps email code requests at 80 per day, below the provider's free daily allowance. Google login stays unavailable until the GitHub Actions `GOOGLE_CLIENT_ID` variable is set to a web client ID authorized for `https://baakio.shop`. Keep `COOKIE_SECURE=true` behind HTTPS. The frontend and API use subdomains of the same site so credentialed browser requests can use the API session cookie; the API sends CSRF tokens through `/api/v1/csrf` for cross-origin writes.
 
 For document storage, set `GCP_PROJECT_ID` and `GCS_BUCKET`. Local development uses `GCP_ADC_HOST_PATH` in Compose; GCE uses its attached service account. Grant the API identity only the required object read/write/delete permissions on the private bucket. Set `MISTRAL_API_KEY` to activate OCR extraction.
 

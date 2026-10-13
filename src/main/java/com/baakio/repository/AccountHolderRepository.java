@@ -27,6 +27,16 @@ public interface AccountHolderRepository extends JpaRepository<AccountHolder, St
             """)
     List<AccountHolderPrincipal> findActiveByPhone(@Param("phone") String phoneE164, Pageable pageable);
 
+    @Query("""
+            select new com.baakio.security.AccountHolderPrincipal(
+                a.id, b.id, b.name, a.displayName, a.phoneE164, a.email, a.active)
+              from AccountHolder a, Business b
+             where b.accountHolderId = a.id
+               and a.id = :accountHolderId and a.active = true
+             order by b.id
+            """)
+    List<AccountHolderPrincipal> findActiveById(@Param("accountHolderId") String accountHolderId, Pageable pageable);
+
     @Query("select a.preferredLocale from AccountHolder a where a.id = :accountHolderId")
     String findPreferredLocaleById(@Param("accountHolderId") String accountHolderId);
 
@@ -34,4 +44,9 @@ public interface AccountHolderRepository extends JpaRepository<AccountHolder, St
     @Transactional
     @Query("update AccountHolder a set a.preferredLocale = :locale where a.id = :accountHolderId")
     int updatePreferredLocale(@Param("accountHolderId") String accountHolderId, @Param("locale") String locale);
+
+    @Modifying
+    @Transactional
+    @Query("update AccountHolder a set a.email = :email where a.id = :accountHolderId")
+    int updateEmail(@Param("accountHolderId") String accountHolderId, @Param("email") String email);
 }
