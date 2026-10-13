@@ -7,6 +7,7 @@ import com.baakio.notification.provider.SmtpEmailNotificationProvider;
 import jakarta.mail.Multipart;
 import jakarta.mail.Part;
 import jakarta.mail.Session;
+import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.Test;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -36,6 +37,7 @@ class AuthenticationEmailTemplateTest {
         assertTrue(rendered.htmlText().contains("Your sign-in code"));
         assertTrue(rendered.htmlText().contains("123456"));
         assertTrue(rendered.htmlText().contains("Never share this code"));
+        assertTrue(rendered.htmlText().contains("cid:baakio-logo"));
         assertFalse(rendered.htmlText().contains("{{"));
     }
 
@@ -71,6 +73,8 @@ class AuthenticationEmailTemplateTest {
         assertTrue(content.contains("654321"));
         assertTrue(content.contains("Your sign-in code"));
         assertTrue(content.contains("Never share this code"));
+        assertTrue(content.contains("cid:baakio-logo"));
+        assertTrue(hasInlineLogo(mime));
     }
 
     private String allText(Part part) throws Exception {
@@ -83,5 +87,18 @@ class AuthenticationEmailTemplateTest {
             return text.toString();
         }
         return content instanceof String text ? text : "";
+    }
+
+    private boolean hasInlineLogo(Part part) throws Exception {
+        if (part instanceof MimeBodyPart bodyPart && "<baakio-logo>".equals(bodyPart.getContentID())) {
+            return bodyPart.isMimeType("image/png");
+        }
+        Object content = part.getContent();
+        if (content instanceof Multipart multipart) {
+            for (int index = 0; index < multipart.getCount(); index++) {
+                if (hasInlineLogo(multipart.getBodyPart(index))) return true;
+            }
+        }
+        return false;
     }
 }

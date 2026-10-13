@@ -6,6 +6,7 @@ import com.baakio.notification.NotificationMessage;
 import com.baakio.notification.email.AuthenticationEmailTemplate;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.mail.SimpleMailMessage;
@@ -59,6 +60,7 @@ public class SmtpEmailNotificationProvider implements NotificationProvider {
             helper.setTo(message.recipient());
             helper.setSubject(rendered.subject());
             helper.setText(rendered.plainText(), rendered.htmlText());
+            helper.addInline("baakio-logo", new ClassPathResource("email/baakio-logo.png"), "image/png");
             mailSender.send(email);
         } catch (MessagingException | UnsupportedEncodingException exception) {
             throw new NotificationDeliveryException("The authentication email could not be prepared.", exception);
