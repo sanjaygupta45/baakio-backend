@@ -3,9 +3,10 @@ package com.baakio;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration;
 import com.baakio.notification.fast2sms.Fast2SmsProperties;
 
-@SpringBootApplication
+@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 @EnableConfigurationProperties(Fast2SmsProperties.class)
 public class BaakioApplication {
 
