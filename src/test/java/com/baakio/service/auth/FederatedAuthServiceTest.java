@@ -75,4 +75,29 @@ class FederatedAuthServiceTest {
         assertEquals(account.getValue().getId(), business.getValue().getAccountHolderId());
         verify(identities).add("GOOGLE", "google-sub-123", principal.id());
     }
+
+    @Test
+    void cannotLinkGoogleEmailOwnedByAnotherAccount() {
+        AccountHolderPrincipal principal = new AccountHolderPrincipal("holder-1", "shop-1", "Shop", "Owner",
+                null, "different@example.com", true);
+        when(identities.accountHolderId("GOOGLE", "google-sub-123")).thenReturn(Optional.empty());
+        when(holders.existsByEmailIgnoreCase("owner@example.com")).thenReturn(true);
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.linkGoogle(principal, "valid-id-token"));
+        assertEquals("IDENTITY_ALREADY_LINKED", error.code());
+        verify(identities, never()).add(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void canLinkGoogleWithSameEmailAsCurrentAccount() {
+        AccountHolderPrincipal principal = new AccountHolderPrincipal("holder-1", "shop-1", "Shop", "Owner",
+                null, "OWNER@example.com", true);
+        when(identities.accountHolderId("GOOGLE", "google-sub-123")).thenReturn(Optional.empty());
+        when(holders.existsByEmailIgnoreCase("owner@example.com")).thenReturn(true);
+
+        service.linkGoogle(principal, "valid-id-token");
+
+        verify(identities).add("GOOGLE", "google-sub-123", "holder-1");
+    }
 }

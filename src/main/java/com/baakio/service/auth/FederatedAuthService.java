@@ -71,6 +71,11 @@ public class FederatedAuthService {
             if (linkedId.equals(principal.id())) return;
             throw new ApiException(HttpStatus.CONFLICT, "IDENTITY_ALREADY_LINKED", "This Google account is linked elsewhere.");
         }
+        if (accountHolders.existsByEmailIgnoreCase(google.email())
+                && !google.email().equalsIgnoreCase(principal.email())) {
+            throw new ApiException(HttpStatus.CONFLICT, "IDENTITY_ALREADY_LINKED",
+                    "This Google email belongs to another account.");
+        }
         try {
             identities.add("GOOGLE", google.subject(), principal.id());
         } catch (DataIntegrityViolationException exception) {
