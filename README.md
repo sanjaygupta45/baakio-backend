@@ -94,7 +94,7 @@ The Docker Compose ports bind to localhost. The `dev` profile uses OTP `222222`,
 - The `ai` layer owns Mistral extraction, bounded retries, field validation, and editable draft calculation. The service worker owns storage retrieval and persistence; the AI layer never posts financial records.
 - Mistral OCR only proposes fields. Draft totals and final line totals are recalculated in the application; confirmation calls the existing financial purchase posting service and changes outstanding only after that transaction commits. The shopkeeper must explicitly confirm any `paidNow` amount.
 - RabbitMQ is the scan queue. Redis is included in Compose only for optional disposable read caching; it is not used for ledger or balance decisions.
-- Session writes require the `X-XSRF-TOKEN` cookie/header pair. Browser requests use the configured exact `FRONTEND_ORIGIN` and credentials.
+- Session writes require the `X-XSRF-TOKEN` cookie/header pair. Browser requests use credentials and one of the configured exact origins: `FRONTEND_ORIGIN` or optional `FRONTEND_ADDITIONAL_ORIGIN`.
 
 ## API routes
 
@@ -134,7 +134,7 @@ All routes use `/api/v1`. CSRF bootstrap, authentication config, Google and emai
 
 Scan upload requires `Idempotency-Key`; the multipart form may include `keepAttachment=true` to retain the original image beyond its review period. Status and image requests return 404 when the scan belongs to another business.
 
-For production, configure `OTP_HASH_SECRET` and `FRONTEND_ORIGIN`. The GitHub Actions workflow enables email codes with Resend SMTP using `login@auth.baakio.shop`; its SMTP password comes from the `baakio-resend-smtp-key` Secret Manager secret. It caps email code requests at 80 per day, below the provider's free daily allowance. Google login stays unavailable until the GitHub Actions `GOOGLE_CLIENT_ID` variable is set to a web client ID authorized for `https://baakio.shop`. Keep `COOKIE_SECURE=true` behind HTTPS. The frontend and API use subdomains of the same site so credentialed browser requests can use the API session cookie; the API sends CSRF tokens through `/api/v1/csrf` for cross-origin writes.
+For production, configure `OTP_HASH_SECRET` and `FRONTEND_ORIGIN`. The deployment also allows `https://www.baakio.shop` through `FRONTEND_ADDITIONAL_ORIGIN`, because the public site currently redirects to `www`. The GitHub Actions workflow enables email codes with Resend SMTP using `login@auth.baakio.shop`; its SMTP password comes from the `baakio-resend-smtp-key` Secret Manager secret. It caps email code requests at 80 per day, below the provider's free daily allowance. Google login stays unavailable until the GitHub Actions `GOOGLE_CLIENT_ID` variable is set to a web client ID authorized for both `https://baakio.shop` and `https://www.baakio.shop`. Keep `COOKIE_SECURE=true` behind HTTPS. The frontend and API use subdomains of the same site so credentialed browser requests can use the API session cookie; the API sends CSRF tokens through `/api/v1/csrf` for cross-origin writes.
 
 For document storage, set `GCP_PROJECT_ID` and `GCS_BUCKET`. Local development uses `GCP_ADC_HOST_PATH` in Compose; GCE uses its attached service account. Grant the API identity only the required object read/write/delete permissions on the private bucket. Set `MISTRAL_API_KEY` to activate OCR extraction.
 
