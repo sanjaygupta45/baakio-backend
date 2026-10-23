@@ -16,6 +16,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Configuration
@@ -35,7 +36,10 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/csrf", "/api/v1/auth/otp/request",
-                        "/api/v1/auth/login", "/api/v1/auth/register").permitAll()
+                        "/api/v1/auth/login", "/api/v1/auth/register",
+                        "/api/v1/auth/config", "/api/v1/auth/google",
+                        "/api/v1/auth/email/request", "/api/v1/auth/email/login",
+                        "/api/v1/auth/email/register").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .anyRequest().authenticated())
             .httpBasic(basic -> basic.disable())
@@ -44,9 +48,15 @@ public class SecurityConfig {
     }
 
     @Bean
-    CorsConfigurationSource corsConfigurationSource(@Value("${baakio.frontend-origin}") String frontendOrigin) {
+    CorsConfigurationSource corsConfigurationSource(
+            @Value("${baakio.frontend-origin}") String frontendOrigin,
+            @Value("${baakio.frontend-additional-origin:}") String additionalOrigin) {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(frontendOrigin));
+        List<String> allowedOrigins = new ArrayList<>(List.of(frontendOrigin));
+        if (!additionalOrigin.isBlank() && !allowedOrigins.contains(additionalOrigin)) {
+            allowedOrigins.add(additionalOrigin);
+        }
+        config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN", "Idempotency-Key"));
         config.setAllowCredentials(true);

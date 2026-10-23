@@ -18,7 +18,9 @@ env:
   REGION: asia-south1
   SERVICE: baakio-api
   IMAGE: asia-south1-docker.pkg.dev/baakio-511105/baakio/api:${{ github.sha }}
-  FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN || 'https://frontend.invalid' }}
+  FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN || 'https://baakio.shop' }}
+  FRONTEND_ADDITIONAL_ORIGIN: ${{ vars.FRONTEND_ADDITIONAL_ORIGIN || 'https://www.baakio.shop' }}
+  GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || '' }}
 
 jobs:
   deploy:
@@ -70,6 +72,7 @@ jobs:
             --region "$REGION" \
             --image "$IMAGE" \
             --service-account "baakio-api-runtime@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --ingress internal-and-cloud-load-balancing \
             --port 8080 \
             --cpu 1 \
             --memory 1Gi \
@@ -77,6 +80,6 @@ jobs:
             --min-instances 1 \
             --max-instances 1 \
             --no-cpu-throttling \
-            --update-env-vars "GCP_PROJECT_ID=${PROJECT_ID},GCS_BUCKET=baakio-511105-documents,FRONTEND_ORIGIN=${FRONTEND_ORIGIN},COOKIE_SECURE=true" \
-            --update-secrets "DB_URL=baakio-db-url:latest,DB_USER=baakio-db-user:latest,DB_PASSWORD=baakio-db-password:latest,SPRING_RABBITMQ_ADDRESSES=baakio-amqp-addresses:latest,OTP_HASH_SECRET=baakio-otp-hash-secret:latest,MISTRAL_API_KEY=baakio-mistral-api-key:latest" \
+            --update-env-vars "GCP_PROJECT_ID=${PROJECT_ID},GCS_BUCKET=baakio-511105-documents,FRONTEND_ORIGIN=${FRONTEND_ORIGIN},FRONTEND_ADDITIONAL_ORIGIN=${FRONTEND_ADDITIONAL_ORIGIN},COOKIE_SECURE=true,GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID},EMAIL_AUTH_ENABLED=true,EMAIL_MAX_REQUESTS_PER_DAY=80,EMAIL_NOTIFICATION_PROVIDER=smtp,LEGACY_PHONE_AUTH_ENABLED=false,SPRING_MAIL_HOST=smtp.resend.com,SPRING_MAIL_PORT=587,SPRING_MAIL_USERNAME=resend,NOTIFICATION_EMAIL_FROM=login@auth.baakio.shop" \
+            --update-secrets "DB_URL=baakio-db-url:latest,DB_USER=baakio-db-user:latest,DB_PASSWORD=baakio-db-password:latest,SPRING_RABBITMQ_ADDRESSES=baakio-amqp-addresses:latest,OTP_HASH_SECRET=baakio-otp-hash-secret:latest,MISTRAL_API_KEY=baakio-mistral-api-key:latest,SPRING_MAIL_PASSWORD=baakio-resend-smtp-key:latest" \
             --quiet
