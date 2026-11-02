@@ -90,12 +90,17 @@ jobs:
           gcloud compute ssh "$VM_NAME" --project "$PROJECT_ID" --zone "$ZONE" --quiet \
             --tunnel-through-iap --command '
               sudo install -d -m 0700 /opt/baakio
+              for file in compose.yaml rabbitmq.conf; do
+                if [ -f "/opt/baakio/$file" ]; then
+                  sudo cp -p "/opt/baakio/$file" "/opt/baakio/$file.previous"
+                fi
+              done
               sudo install -m 0644 /tmp/baakio-deploy/compose.yaml /opt/baakio/compose.yaml
               sudo install -m 0644 /tmp/baakio-deploy/rabbitmq.conf /opt/baakio/rabbitmq.conf
               sudo install -m 0700 /tmp/baakio-deploy/render-env.py /opt/baakio/render-env.py
               sudo install -m 0700 /tmp/baakio-deploy/release.sh /opt/baakio/release.sh
               sudo install -m 0700 /tmp/baakio-deploy/watch.sh /opt/baakio/watch.sh
-              sudo install -m 0644 /tmp/baakio-deploy/Caddyfile /etc/caddy/Caddyfile
+              sudo install -m 0644 /tmp/baakio-deploy/Caddyfile /opt/baakio/Caddyfile
               sudo install -m 0644 /tmp/baakio-deploy/baakio-watch.service /etc/systemd/system/baakio-watch.service
               sudo install -m 0644 /tmp/baakio-deploy/baakio-watch.timer /etc/systemd/system/baakio-watch.timer
               sudo systemctl daemon-reload
@@ -105,3 +110,25 @@ jobs:
         run: |
           gcloud compute ssh "$VM_NAME" --project "$PROJECT_ID" --zone "$ZONE" --quiet \
             --tunnel-through-iap --command "sudo /opt/baakio/release.sh $GITHUB_SHA && sudo systemctl enable --now baakio-watch.timer && sudo systemctl start baakio-watch.service"
+
+      - name: Verify public HTTPS and browser origin
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --max-time 10 --output /dev/null \
+              https://api.baakio.shop/api/v1/auth/config; then
+              break
+            fi
+            if [[ $attempt -eq 12 ]]; then
+              echo 'Public API did not respond after deployment.' >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          headers=$(mktemp)
+          trap 'rm -f "$headers"' EXIT
+          curl --fail --silent --show-error --max-time 10 \
+            --header 'Origin: https://www.baakio.shop' \
+            --dump-header "$headers" --output /dev/null \
+            https://api.baakio.shop/api/v1/csrf
+          grep -qi '^access-control-allow-origin: https://www\.baakio\.shop' "$headers"
+          grep -qi '^access-control-allow-credentials: true' "$headers"

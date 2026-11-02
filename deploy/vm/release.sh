@@ -13,16 +13,30 @@ fi
 
 cd /opt/baakio
 export API_IMAGE="asia-south1-docker.pkg.dev/baakio-513506/baakio/api:$1"
+rm -f Caddyfile.previous
 if [[ -f runtime.env ]]; then
   cp -p runtime.env runtime.env.previous
 fi
 rollback() {
   status=${1:-$?}
   trap - ERR
+  for file in compose.yaml rabbitmq.conf; do
+    if [[ -f "$file.previous" ]]; then
+      mv -f "$file.previous" "$file"
+    fi
+  done
+  if [[ -f Caddyfile.previous ]]; then
+    mv -f Caddyfile.previous /etc/caddy/Caddyfile
+    systemctl reload caddy || echo 'Could not reload the previous Caddy configuration.' >&2
+  fi
   if [[ -f runtime.env.previous ]]; then
     mv -f runtime.env.previous runtime.env
-    docker compose --env-file runtime.env -f compose.yaml up -d --remove-orphans || true
-    echo 'Previous release configuration restored.' >&2
+    unset API_IMAGE
+    if docker compose --env-file runtime.env -f compose.yaml up -d --remove-orphans --force-recreate; then
+      echo 'Previous image, Compose files, and runtime configuration restored.' >&2
+    else
+      echo 'Automatic rollback failed; inspect the VM containers.' >&2
+    fi
   fi
   exit "$status"
 }
@@ -50,10 +64,12 @@ if [[ $ready != true ]]; then
   rollback 1
 fi
 
-caddy validate --config /etc/caddy/Caddyfile
+caddy validate --config Caddyfile
+cp -p /etc/caddy/Caddyfile Caddyfile.previous
+install -m 0644 Caddyfile /etc/caddy/Caddyfile
 systemctl reload caddy
 docker compose --env-file runtime.env -f compose.yaml ps
 trap - ERR
-rm -f runtime.env.previous
+rm -f runtime.env.previous Caddyfile.previous compose.yaml.previous rabbitmq.conf.previous
 docker image prune -a --force --filter until=168h >/dev/null || true
 echo "Deployed $API_IMAGE"
