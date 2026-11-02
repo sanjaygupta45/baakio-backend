@@ -45,7 +45,7 @@ billing budget before leaving the services running.
 On 2 November 2026, the project received a ₹6,000 monthly budget with 50%,
 80%, and 100% alerts. It excludes trial credits when measuring spend and is
 scoped to `baakio-513506`. Cloud SQL and the VM were provisioned with reserved
-VM IP `34.14.159.101`; DNS cutover is still a separate step.
+VM IP `34.14.159.101`. The `api.baakio.shop` DNS record now points to that IP.
 
 ## 2. Provision the new project
 
@@ -64,8 +64,8 @@ The script prints the reserved IP and two GitHub Actions variable values. Add
 repository's **Settings → Secrets and variables → Actions → Variables**.
 Those variables were added to the repository on 2 November 2026.
 
-The following three secrets are created **without versions**. Add their real
-values through Secret Manager in the new project before deploying:
+The following three secrets were created **without versions** and now have
+enabled versions supplied through Secret Manager in the new project:
 
 | Secret | Value |
 | --- | --- |
@@ -77,6 +77,8 @@ The script also generates `baakio-db-password`, `baakio-db-root-password`,
 `baakio-rabbit-password`, and `baakio-otp-hash-secret`. The VM cannot read the
 root password. Its MySQL connection uses the application user's password and
 the VM service account's Cloud SQL Client role; no service-account key is used.
+If a provider secret is deleted and recreated, rerun the secret IAM binding
+step in `provision-cloud.sh` so the VM service account can read its new version.
 
 Keep the existing `auth.baakio.shop` sender domain verified with Resend. The
 API expects `login@auth.baakio.shop`. Do not put these values in Git, GitHub
@@ -116,21 +118,21 @@ The proxy uses the VM's IAM identity to connect to Cloud SQL over an encrypted
 channel, without authorized networks. MySQL still checks the application user
 and database password. JDBC retrieves the MySQL 8.4 authentication public key
 on the private Docker network; the proxy encrypts its Cloud SQL connection.
-Caddy blocks the
-health endpoint from public traffic. The frontend Vercel workflow stays as is.
+Caddy blocks the health endpoint from public traffic. The frontend Vercel
+workflow stays as is.
 
-**Keep the deployment branch unmerged until all three provider secret versions
-are present.** A push to `main` triggers deployment.
+The initial deployment was merged to `main` on 2 November 2026 and the GitHub
+workflow completed successfully. Future pushes to `main` trigger deployment.
 
 ## 5. Cut over DNS and verify
 
-Read the reserved IP from `gcloud compute addresses describe baakio-api-ip
---project=baakio-513506 --region=asia-south1 --format='value(address)'`. Set
-the GoDaddy `api` A record to that IP after the local API health check passes.
-Caddy obtains and renews the public certificate once DNS points at the VM and
-ports 80/443 are reachable. Remove any obsolete AAAA record for `api` unless
-IPv6 is configured on the VM. Verify the certificate and
-`https://api.baakio.shop/api/v1/auth/config` after DNS propagation.
+The GoDaddy `api` A record points to the VM's reserved IP `34.14.159.101`.
+Caddy has obtained a public certificate. On 2 November 2026,
+`https://api.baakio.shop/api/v1/auth/config` returned HTTP 200,
+`/api/v1/csrf` returned HTTP 200 with a Secure cookie, the production origins
+passed CORS checks, and the public `/actuator/health` route returned 404 as
+configured. The Vercel storefront returned HTTP 200 at
+`https://www.baakio.shop`; the apex redirects there.
 
 Perform a browser check from `https://baakio.shop`: Google sign-in and email
 code, authenticated account retrieval, a ledger write with CSRF and
@@ -149,24 +151,31 @@ their retention or deletion is decided separately.
 Cloud SQL takes a managed backup daily starting at 02:30 UTC and retains 28
 daily recovery points. This includes at least four weekly recovery points
 without a VM dump job or separate backup bucket. Point-in-time recovery is off
-to keep the pilot cost low. Check the most recent backup in Cloud SQL and test
-restoring one into a disposable instance before launch. Set a Cloud Monitoring
-alert for failed or missing Cloud SQL backups. Shared-core `db-f1-micro` is a
-low-cost pilot size with no Cloud SQL SLA; increase its tier if database CPU,
-memory, or latency measurements demand it.
+to keep the pilot cost low. An initial on-demand backup completed on
+2 November 2026 and was restored into a disposable Cloud SQL instance. A query
+against the restored database found successful Flyway version 7. The disposable
+instance was deleted after verification. The automated backup schedule has
+not yet completed its first run; check it after the next 02:30 UTC window.
+Cloud Monitoring alerts on failed, attempted-failed, or skipped backup events.
+Shared-core `db-f1-micro` is a low-cost pilot size with no Cloud SQL SLA;
+increase its tier if database CPU, memory, or latency measurements demand it.
 
 The bootstrap installs Google's Ops Agent for VM memory, disk, and log
 telemetry. The five-minute `baakio-watch` timer checks API health, all three
 containers, free memory, and disk usage; inspect failures
-with `journalctl -u baakio-watch.service`. Create Cloud Monitoring alerts for
-external API uptime, VM memory, disk usage, VM availability, Cloud SQL backup
-status, and failed watch services. During the pilot,
+with `journalctl -u baakio-watch.service`. Cloud Monitoring now has a
+one-minute HTTPS uptime check and alert policies for API failure or expiring
+TLS, high VM memory or disk use, Cloud SQL backup failure events, and watch
+service failures. Notifications go to `anujgupta630661@gmail.com`; confirm
+the channel's verification email if Google sends one. During the pilot,
 resize from `e2-medium` to `e2-standard-2` if available RAM stays low, swap is
 used, a container is killed for memory, or representative requests are slow.
 
-To test recovery, restore a managed backup into a disposable Cloud SQL instance,
-connect a disposable API VM, and confirm Flyway validation, login, and ledger
-reads. For a VM replacement, attach the new VM service account, bootstrap it,
+For a fuller recovery drill, restore a managed backup into a disposable Cloud
+SQL instance, connect a disposable API VM, and confirm login and ledger reads.
+The initial restore test verified database integrity and Flyway history but
+did not run browser authentication against the disposable instance. For a VM
+replacement, attach the new VM service account, bootstrap it,
 point it at the existing Cloud SQL instance and private bill-image bucket,
 deploy the same image commit, and change the `api` A record to the replacement
 VM's reserved IP. The RabbitMQ queue can be recreated; scan job state and the
