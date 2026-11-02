@@ -1,0 +1,107 @@
+name: Deploy backend to Google Compute Engine
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baakio-api-production
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: baakio-513506
+  REGION: asia-south1
+  ZONE: asia-south1-a
+  VM_NAME: baakio-api-vm
+  IMAGE: asia-south1-docker.pkg.dev/baakio-513506/baakio/api:${{ github.sha }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Verify backend
+        run: mvn -B verify
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deployment identity
+        env:
+          WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          DEPLOY_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+        run: |
+          test -n "$WIF_PROVIDER" || { echo 'Missing GCP_WIF_PROVIDER variable'; exit 1; }
+          test -n "$DEPLOY_SERVICE_ACCOUNT" || { echo 'Missing GCP_DEPLOY_SERVICE_ACCOUNT variable'; exit 1; }
+
+      - name: Build image
+        run: docker build --tag "$IMAGE" .
+
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Push image
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker push "$IMAGE"
+
+      - name: Refresh Google identity for VM access
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Install VM release files
+        run: |
+          gcloud compute ssh "$VM_NAME" --project "$PROJECT_ID" --zone "$ZONE" --quiet \
+            --tunnel-through-iap --command 'mkdir -p /tmp/baakio-deploy'
+          gcloud compute scp --project "$PROJECT_ID" --zone "$ZONE" --quiet \
+            --tunnel-through-iap \
+            deploy/vm/compose.yaml deploy/vm/rabbitmq.conf deploy/vm/Caddyfile \
+            deploy/vm/render-env.py deploy/vm/release.sh deploy/vm/watch.sh \
+            deploy/vm/baakio-watch.service deploy/vm/baakio-watch.timer \
+            "$VM_NAME":/tmp/baakio-deploy/
+          gcloud compute ssh "$VM_NAME" --project "$PROJECT_ID" --zone "$ZONE" --quiet \
+            --tunnel-through-iap --command '
+              sudo install -d -m 0700 /opt/baakio
+              sudo install -m 0644 /tmp/baakio-deploy/compose.yaml /opt/baakio/compose.yaml
+              sudo install -m 0644 /tmp/baakio-deploy/rabbitmq.conf /opt/baakio/rabbitmq.conf
+              sudo install -m 0700 /tmp/baakio-deploy/render-env.py /opt/baakio/render-env.py
+              sudo install -m 0700 /tmp/baakio-deploy/release.sh /opt/baakio/release.sh
+              sudo install -m 0700 /tmp/baakio-deploy/watch.sh /opt/baakio/watch.sh
+              sudo install -m 0644 /tmp/baakio-deploy/Caddyfile /etc/caddy/Caddyfile
+              sudo install -m 0644 /tmp/baakio-deploy/baakio-watch.service /etc/systemd/system/baakio-watch.service
+              sudo install -m 0644 /tmp/baakio-deploy/baakio-watch.timer /etc/systemd/system/baakio-watch.timer
+              sudo systemctl daemon-reload
+            '
+
+      - name: Release and verify VM
+        run: |
+          gcloud compute ssh "$VM_NAME" --project "$PROJECT_ID" --zone "$ZONE" --quiet \
+            --tunnel-through-iap --command "sudo /opt/baakio/release.sh $GITHUB_SHA && sudo systemctl enable --now baakio-watch.timer && sudo systemctl start baakio-watch.service"

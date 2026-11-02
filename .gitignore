@@ -1,6 +1,8 @@
 .env
 /target/
 gha-creds-*.json
+/deploy/vm/runtime.env*
+__pycache__/
 
 ### STS ###
 .apt_generated

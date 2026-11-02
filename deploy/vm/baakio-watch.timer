@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Baakio health every five minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=baakio-watch.service
+
+[Install]
+WantedBy=timers.target

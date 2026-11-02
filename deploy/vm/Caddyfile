@@ -1,0 +1,6 @@
+api.baakio.shop {
+    @internal path /actuator/*
+    respond @internal 404
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8080
+}

@@ -1,0 +1,8 @@
+[Unit]
+Description=Check Baakio VM and application health
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/baakio/watch.sh
