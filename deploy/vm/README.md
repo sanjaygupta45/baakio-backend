@@ -114,6 +114,10 @@ Push the backend's new `deploy-vm.yml` workflow to `main`, or dispatch it from
 files over IAP, pulls secrets on the VM, starts the Compose stack, and checks
 `/actuator/health` locally before reloading Caddy. The API is bound to
 `127.0.0.1:8080`; the Cloud SQL Auth Proxy and RabbitMQ have no host ports.
+If the VM health or Caddy configuration check fails, the release script
+restores the prior image, Compose files, runtime settings, and Caddy
+configuration. After the VM release, GitHub also checks the public HTTPS
+endpoint and the `www` browser origin's CORS response.
 The proxy uses the VM's IAM identity to connect to Cloud SQL over an encrypted
 channel, without authorized networks. MySQL still checks the application user
 and database password. JDBC retrieves the MySQL 8.4 authentication public key
