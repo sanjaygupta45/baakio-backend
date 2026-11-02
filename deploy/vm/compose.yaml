@@ -1,0 +1,59 @@
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  cloud-sql-proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.26.3
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: *bounded-logging
+    command:
+      - --address=0.0.0.0
+      - --port=3306
+      - ${CLOUD_SQL_CONNECTION_NAME}
+
+  rabbitmq:
+    image: rabbitmq:4.1
+    restart: unless-stopped
+    mem_limit: 600m
+    logging: *bounded-logging
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+
+  api:
+    image: ${API_IMAGE}
+    user: "10001:10001"
+    restart: unless-stopped
+    mem_limit: 1700m
+    logging: *bounded-logging
+    depends_on:
+      cloud-sql-proxy:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - runtime.env
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx1280m -XX:+ExitOnOutOfMemoryError
+      DB_URL: jdbc:mysql://cloud-sql-proxy:3306/baakio?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC&connectTimeout=10000&allowPublicKeyRetrieval=true&sslMode=DISABLED
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      DB_POOL_SIZE: "5"
+      COOKIE_SECURE: "true"
+      SPRING_PROFILES_ACTIVE: production
+    ports:
+      - "127.0.0.1:8080:8080"
+volumes:
+  rabbitmq_data:

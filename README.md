@@ -1,48 +1,19 @@
 # Baakio backend
 
-## Cloud Run deployment
+## Production deployment
 
-The backend deploys from GitHub Actions whenever `main` is pushed, and can also be
-started with **Run workflow**. The workflow runs the Maven test suite, builds the
-container, pushes it to Artifact Registry, and updates the `baakio-api` Cloud Run
-service in project `baakio-511105` (`asia-south1`). GitHub authenticates through
-Workload Identity Federation; no service-account key is stored in GitHub.
+The backend's production target is one Compute Engine VM in project
+`baakio-513506` (`asia-south1-a`). Caddy terminates HTTPS at
+`https://api.baakio.shop` and proxies to the Java API. Production MySQL runs
+in Cloud SQL; the VM runs the Cloud SQL Auth Proxy and RabbitMQ on a private
+Docker network. The separate React frontend remains on Vercel at
+`https://baakio.shop`. GitHub Actions tests and deploys a versioned container
+through Workload Identity Federation; the VM uses its attached service account
+for Google Cloud access.
 
-Production resources are the `baakio` Artifact Registry repository, private
-`gs://baakio-511105-documents` bucket, and Secret Manager secrets named
-`baakio-db-url`, `baakio-db-user`, `baakio-db-password`,
-`baakio-amqp-addresses`, `baakio-otp-hash-secret`, and
-`baakio-mistral-api-key`. The Cloud Run runtime
-identity can read only those secrets and manage objects in that bucket. MySQL
-is configured with a JDBC URL and TLS required; RabbitMQ uses the managed
-`amqps://` address. Redis is not used by the current backend.
-
-The API's scheduled jobs and RabbitMQ listener require CPU between HTTP
-requests. The workflow therefore keeps one Cloud Run instance running with
-instance-based billing. This incurs ongoing Cloud Run charges.
-
-The chosen production browser origin is `https://baakio.shop`; the API hostname
-is `https://api.baakio.shop`. The workflow sets `FRONTEND_ORIGIN` to the browser
-origin, and the frontend production build sets `VITE_API_BASE_URL` to the API
-origin. An external Application Load Balancer routes `api.baakio.shop` to the
-Cloud Run service in `asia-south1`. Add a GoDaddy A record with host `api` and
-value `8.233.193.171`; the Google-managed TLS certificate becomes active after
-DNS propagates. The workflow restricts Cloud Run ingress to the load balancer.
-
-Authentication now uses Google Identity Services and email codes. The Cloud Run
-workflow configures Resend SMTP with the verified `auth.baakio.shop` domain and
-reads the API key from `baakio-resend-smtp-key` in Secret Manager. Email
-authentication messages use the branded HTML template in
-`src/main/resources/email/auth-otp.html` with a plain-text alternative. The
-subject and instructions reflect sign-in, registration, or email linking and
-support English and Hindi. The Google OAuth Web client ID is stored in the
-GitHub Actions variable `GOOGLE_CLIENT_ID`. The API hostname is live; the
-frontend still needs hosting at `baakio.shop` before production browser sign-in
-can be tested.
-Leave `LEGACY_PHONE_AUTH_ENABLED=false` in production. Bill scanning reads
-`MISTRAL_API_KEY` from Secret Manager. If Aiven restricts
-inbound IP addresses, Cloud Run will also
-need fixed outbound IP routing allowed by Aiven.
+See [the VM deployment runbook](deploy/vm/README.md) for provisioning, Google
+sign-in setup, secrets, DNS cutover, backups, monitoring, and recovery. The
+new project and VM must be provisioned before the workflow is pushed to `main`.
 
 Spring Boot REST API for the Baakio shop ledger. This app owns authentication, shop scoping, money calculations, and persistence. MySQL is the source of truth; posted purchases and confirmed payments are append-only in this first slice.
 
@@ -54,7 +25,7 @@ Spring Boot REST API for the Baakio shop ledger. This app owns authentication, s
 4. Register an account holder and business in the client using email. The local `dev` profile displays the code in the UI and sends no email.
 
 For local Google sign-in, create an **OAuth 2.0 Web application** client in the
-Google Cloud Console for project `baakio-511105`. Add both
+Google Cloud Console for project `baakio-513506`. Add both
 `http://localhost:5173` and `http://127.0.0.1:5173` as authorized JavaScript
 origins, then set its **client ID** in `GOOGLE_CLIENT_ID` in `.env`. No client
 secret is used. Google sign-in is hidden when the ID is blank. A domain and
@@ -84,7 +55,7 @@ The Docker Compose ports bind to localhost. The `dev` profile uses OTP `222222`,
 - Flyway creates `utf8mb4` tables for account holders, businesses, customers, opening balances, purchases/lines, confirmed payments, promises, allocations, idempotency records, and audit events.
 - Account holders authenticate with a verified Google ID token or a one-time email code; passwords are not used. Google identities use the immutable Google subject, and email identities use the normalized verified address. Matching email addresses are never merged automatically; the signed-in account holder can link another method in Settings.
 - The legacy phone OTP endpoints remain available only when `LEGACY_PHONE_AUTH_ENABLED=true` (local dev can opt in). They are disabled by default in production.
-- Email OTP challenges store an HMAC hash, expire after five minutes by default, allow at most five attempts, and have resend, per-email, and global daily limits. MySQL-backed Spring Session JDBC keeps browser sessions valid across Cloud Run instances.
+- Email OTP challenges store an HMAC hash, expire after five minutes by default, allow at most five attempts, and have resend, per-email, and global daily limits. MySQL-backed Spring Session JDBC keeps browser sessions in MySQL.
 - Notifications use a provider strategy behind `NotificationProvider`. `NotificationDispatcher` routes each channel to a configured provider ID, so SMS, WhatsApp, and email implementations can change independently.
 - `Fast2SmsClient` owns the Fast2SMS HTTP contract. The Fast2SMS provider supports the OTP and quick SMS routes plus WhatsApp templates. SMTP email is enabled when `SPRING_MAIL_HOST` is configured.
 - Financial POSTs require `Idempotency-Key`, lock the customer row, validate the current balance, write the event and audit row in one transaction, and return fresh server-computed balances.
@@ -134,7 +105,7 @@ All routes use `/api/v1`. CSRF bootstrap, authentication config, Google and emai
 
 Scan upload requires `Idempotency-Key`; the multipart form may include `keepAttachment=true` to retain the original image beyond its review period. Status and image requests return 404 when the scan belongs to another business.
 
-For production, configure `OTP_HASH_SECRET` and `FRONTEND_ORIGIN`. The deployment also allows `https://www.baakio.shop` through `FRONTEND_ADDITIONAL_ORIGIN`, because the public site currently redirects to `www`. The GitHub Actions workflow enables email codes with Resend SMTP using `login@auth.baakio.shop`; its SMTP password comes from the `baakio-resend-smtp-key` Secret Manager secret. It caps email code requests at 80 per day, below the provider's free daily allowance. Google login stays unavailable until the GitHub Actions `GOOGLE_CLIENT_ID` variable is set to a web client ID authorized for both `https://baakio.shop` and `https://www.baakio.shop`. Keep `COOKIE_SECURE=true` behind HTTPS. The frontend and API use subdomains of the same site so credentialed browser requests can use the API session cookie; the API sends CSRF tokens through `/api/v1/csrf` for cross-origin writes.
+For production, configure `OTP_HASH_SECRET` and `FRONTEND_ORIGIN`. The deployment also allows `https://www.baakio.shop` through `FRONTEND_ADDITIONAL_ORIGIN`, because the public site currently redirects to `www`. The VM configuration enables email codes with Resend SMTP using `login@auth.baakio.shop`; its SMTP password comes from the `baakio-resend-smtp-key` Secret Manager secret. It caps email code requests at 80 per day. Google login stays unavailable until the `baakio-google-client-id` secret contains a Web client ID authorized for both `https://baakio.shop` and `https://www.baakio.shop`. Keep `COOKIE_SECURE=true` behind HTTPS. The frontend and API use subdomains of the same site so credentialed browser requests can use the API session cookie; the API sends CSRF tokens through `/api/v1/csrf` for cross-origin writes.
 
 For document storage, set `GCP_PROJECT_ID` and `GCS_BUCKET`. Local development uses `GCP_ADC_HOST_PATH` in Compose; GCE uses its attached service account. Grant the API identity only the required object read/write/delete permissions on the private bucket. Set `MISTRAL_API_KEY` to activate OCR extraction.
 
