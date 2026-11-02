@@ -21,11 +21,10 @@ flowchart LR
 
 ## 1. Price and access checks
 
-Sign in to the **new** Google account with `gcloud auth login`, then check that
-`gcloud projects describe baakio-513506` and
-`gcloud billing projects describe baakio-513506` succeed. The CLI account in the
-development workspace was `sanjaygupta7212@gmail.com` and did not have access
-to the new project at implementation time.
+Sign in to the **new** Google account (`anujgupta630661@gmail.com`) with
+`gcloud auth login`, then check that `gcloud projects describe baakio-513506`
+and `gcloud billing projects describe baakio-513506` succeed. That access was
+verified before provisioning.
 
 Before provisioning, use the [Google Cloud pricing
 calculator](https://cloud.google.com/products/calculator) for a continuously
@@ -120,8 +119,8 @@ on the private Docker network; the proxy encrypts its Cloud SQL connection.
 Caddy blocks the
 health endpoint from public traffic. The frontend Vercel workflow stays as is.
 
-**Do not push the deployment workflow until the project, secrets, VM bootstrap,
-and GitHub variables are ready.** A push to `main` triggers deployment.
+**Keep the deployment branch unmerged until all three provider secret versions
+are present.** A push to `main` triggers deployment.
 
 ## 5. Cut over DNS and verify
 
