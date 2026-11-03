@@ -1,71 +1,67 @@
-# Baakio backend
+# Baakio API
 
-## Production deployment
+Baakio helps small businesses track customer credit, partial payments, and payment promises in one clear ledger. The [frontend README](https://github.com/sanjaygupta45/Baakio-fe#readme) explains the problem and product journey; this repository contains the Spring Boot API and the rules that keep each customer balance trustworthy.
 
-The backend's production target is one Compute Engine VM in project
-`baakio-513506` (`asia-south1-a`). Caddy terminates HTTPS at
-`https://api.baakio.shop` and proxies to the Java API. Production MySQL runs
-in Cloud SQL; the VM runs the Cloud SQL Auth Proxy and RabbitMQ on a private
-Docker network. The separate React frontend remains on Vercel at
-`https://baakio.shop`. GitHub Actions tests and deploys a versioned container
-through Workload Identity Federation; the VM uses its attached service account
-for Google Cloud access.
+[Website](https://www.baakio.shop/) · [Frontend repository](https://github.com/sanjaygupta45/Baakio-fe) · [Deployment runbook](deploy/vm/README.md)
 
-See [the VM deployment runbook](deploy/vm/README.md) for provisioning, Google
-sign-in setup, secrets, DNS cutover, backups, monitoring, and recovery. The
-new project and VM must be provisioned before the workflow is pushed to `main`.
+## From problem to product
 
-Spring Boot REST API for the Baakio shop ledger. This app owns authentication, shop scoping, money calculations, and persistence. MySQL is the source of truth; posted purchases and confirmed payments are append-only in this first slice.
+For a business that sells on credit, a notebook or message thread can record individual transactions but makes the current position hard to trust. A customer may buy again, pay only part of a balance, promise another payment, or send a photo of a handwritten bill. Baakio turns those events into one customer account with a computed balance, dated history, and a clear follow-up queue. The owner remains responsible for confirming that money was received and that an AI draft matches the bill.
 
-## Local run
+## Features delivered by the API
 
-1. Copy `.env.example` to `.env`.
-2. Start MySQL, RabbitMQ, Redis, and the API with `docker compose up --build`.
-3. Run the separate frontend from `../baakio-fe` with `npm install` and `npm run dev`.
-4. Register an account holder and business in the client using email. The local `dev` profile displays the code in the UI and sends no email.
+| Need | What Baakio provides |
+| --- | --- |
+| Separate business records | Passwordless email or Google sign-in, account holder identity linking, and business-scoped access to customers, scans, and financial data. |
+| Start from an existing notebook | A one-time, acknowledged opening balance with a cutoff date for each customer. |
+| Record repeat credit sales | Quick-amount and itemized purchases, with server-calculated line totals and purchase totals after discounts, plus optional money paid at purchase time. |
+| Track money actually received | Confirmed cash, UPI, bank, or other payments; partial payments reduce the outstanding balance and can be allocated to a promise. |
+| Keep commitments visible | Payment promises with an amount and due date, rescheduling history, and fulfilled, due-today, overdue, or upcoming status. A promise never reduces the ledger balance. |
+| Know who needs attention | A dashboard with total outstanding, due-today and overdue amounts, and prioritized customer follow-ups, including customers with debt but no promise. |
+| Explain an account | Date-range statements with opening balance, purchases, payments, closing balance, and individual movements. |
+| Follow up in the customer's language | English or Hindi reminder previews, short or detailed, with a prefilled WhatsApp link and owner-confirmed UPI details when available. The API does not treat opening WhatsApp as delivery. |
+| Enter handwritten bills faster | Asynchronous OCR creates a reviewable purchase draft; the owner corrects it and explicitly confirms before it enters the ledger. |
 
-For local Google sign-in, create an **OAuth 2.0 Web application** client in the
-Google Cloud Console for project `baakio-513506`. Add both
-`http://localhost:5173` and `http://127.0.0.1:5173` as authorized JavaScript
-origins, then set its **client ID** in `GOOGLE_CLIENT_ID` in `.env`. No client
-secret is used. Google sign-in is hidden when the ID is blank. A domain and
-email delivery account are not needed to test localhost email codes; the dev
-provider returns the code only in the local response. Use the same host spelling
-throughout a browser session so session and CSRF cookies remain available.
+## How it works
 
-The example Compose setup publishes MySQL on `127.0.0.1:3307` to avoid conflicts with a local MySQL server. Change `MYSQL_HOST_PORT` if that port is already in use.
-Set `GCP_PROJECT_ID`, `GCS_BUCKET`, and `GCP_ADC_HOST_PATH` in `.env` before starting the API. Use a private development bucket separate from production. Run `gcloud auth application-default login` on the host to create the ADC file and set `LOCAL_UID` to `id -u` so the container can read it. Scan images always use private Google Cloud Storage. Set `MISTRAL_API_KEY` to enable bill extraction. Without a key, uploaded jobs become `FAILED` and the shopkeeper can use manual purchase entry.
+```text
+React app (Vercel)
+    | session cookie + CSRF token
+    v
+Spring Boot API
+    |-- MySQL / Flyway: accounts, customers, ledger, promises, scans
+    |-- RabbitMQ: asynchronous bill scan jobs
+    |-- Private Google Cloud Storage: uploaded bill images
+    `-- Mistral OCR: editable extraction draft
+```
 
-## Maven commands
+- Each account holder manages a business; customer, ledger, and scan reads and writes are scoped to that business.
+- MySQL stores the financial source of truth. The server computes balances from an opening entry, posted purchases, and confirmed payments. Payment promises and their allocations are tracked separately so they do not reduce debt twice.
+- Financial writes use `BigDecimal`, a customer row lock, an `Idempotency-Key`, and a transaction that includes an audit event. Posted purchases and confirmed payments are append-only in the current implementation.
+- Bill uploads enter an asynchronous queue. OCR suggests fields in a draft; the owner edits and confirms the draft before the normal purchase posting path changes the balance.
+- Browser authentication uses an email code or a verified Google ID token, server-side sessions, and CSRF protection. Customers do not need accounts or passwords.
 
-- Resolve dependencies and compile: `mvn -DskipTests package`
-- Run the API with the local OTP profile: `SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run`. `application.properties` is the production baseline; `application-dev.properties` overrides it for local development. The dev profile's default JDBC settings match the Compose MySQL host port (`3307`) and `.env.example`; if you customize `.env`, pass the matching `MYSQL_*` or `DB_*` values to the Maven process because Spring does not load Compose's `.env` file itself.
-- Create the executable JAR: `mvn package`
-- Run the packaged API: `java -jar target/baakio-0.1.0.jar`
+## AI bill scan: from image to ledger entry
 
-The Docker Compose ports bind to localhost. The `dev` profile uses OTP `222222`, returns that code to the local client, and logs only masked notification metadata. It does not send real SMS, WhatsApp, or email. For production, do not activate `dev`; provide `DB_URL`, `DB_USER`, `DB_PASSWORD`, `FRONTEND_ORIGIN`, and a random `OTP_HASH_SECRET` through the deployment environment, set real provider credentials as needed, and use `COOKIE_SECURE=true` behind HTTPS. `.env.example` contains local-development values only; do not use them for real data.
+1. **Upload:** The signed-in owner selects a customer and uploads one JPEG, PNG, or WebP image (up to 10 MB). The API checks business ownership, image content, and the upload's `Idempotency-Key`, then stores the original in a private Google Cloud Storage bucket.
+2. **Queue reliably:** A database transaction creates the scan job and an outbox event together. The outbox relay publishes to RabbitMQ and marks the event delivered only after a publisher confirmation and successful routing. A failed publish remains eligible for another attempt.
+3. **Extract:** A worker claims the job, reads the private image, and asks Mistral OCR for structured bill fields. The extraction prompt distinguishes a new purchase from a ledger, account summary, or payment receipt and does not infer that a customer paid. Extraction failures receive bounded retries. Stale processing claims are recovered; duplicate queue deliveries cannot create duplicate drafts.
+4. **Prepare a reviewable draft:** The application checks that the image appears to be a new purchase and contains usable items. It flags uncertain names, quantities, prices, dates, and mismatched totals. Line totals and the purchase total after the submitted discount are calculated in Java using decimal money rules; OCR's written total is shown for comparison, not accepted as the ledger amount.
+5. **Owner review:** The client polls the scan status and displays the authorized original beside editable lines. A failed scan leaves manual purchase entry available. Neither upload nor extraction changes the customer balance.
+6. **Post once:** Confirmation requires the current draft version and an `Idempotency-Key`. The service recalculates the edited total, requires explicit confirmation of any `paidNow` amount, and calls the same transactional purchase posting path used by manual entry. Only this successful transaction changes outstanding debt.
+7. **Protect the source:** Image access is scoped to the business and served without browser caching. Unkept images are deleted after the retention period (30 days by default); owners can choose to retain an attachment.
 
 ## Backend implementation
 
-- Java 21, Spring Boot 4, Spring Security sessions, Hibernate ORM/JPA, Flyway, and MySQL 8.4.
-- Source is organized in horizontal layers: `controller`, `dto`, `model`, `repository`, `service`, `ai`, `messaging`, `config`, and `utils`.
-- DTOs are grouped by responsibility under `dto/auth`, `dto/business`, `dto/customer`, `dto/ledger`, `dto/commitment`, `dto/dashboard`, and `dto/reminder`.
-- Controllers handle HTTP binding, DTOs define API contracts, services own validation and transactions, and repositories use Hibernate entity operations and JPQL.
-- Flyway owns schema changes; Hibernate validates entity mappings against the migrated schema at startup and does not create or update tables.
-- Flyway creates `utf8mb4` tables for account holders, businesses, customers, opening balances, purchases/lines, confirmed payments, promises, allocations, idempotency records, and audit events.
-- Account holders authenticate with a verified Google ID token or a one-time email code; passwords are not used. Google identities use the immutable Google subject, and email identities use the normalized verified address. Matching email addresses are never merged automatically; the signed-in account holder can link another method in Settings.
-- The legacy phone OTP endpoints remain available only when `LEGACY_PHONE_AUTH_ENABLED=true` (local dev can opt in). They are disabled by default in production.
-- Email OTP challenges store an HMAC hash, expire after five minutes by default, allow at most five attempts, and have resend, per-email, and global daily limits. MySQL-backed Spring Session JDBC keeps browser sessions in MySQL.
-- Notifications use a provider strategy behind `NotificationProvider`. `NotificationDispatcher` routes each channel to a configured provider ID, so SMS, WhatsApp, and email implementations can change independently.
-- `Fast2SmsClient` owns the Fast2SMS HTTP contract. The Fast2SMS provider supports the OTP and quick SMS routes plus WhatsApp templates. SMTP email is enabled when `SPRING_MAIL_HOST` is configured.
-- Financial POSTs require `Idempotency-Key`, lock the customer row, validate the current balance, write the event and audit row in one transaction, and return fresh server-computed balances.
-- Itemized totals use `BigDecimal`; line totals round to paise with `HALF_UP`. Payments and promise allocations are checked independently so allocations do not reduce debt twice.
-- Bill scans use MySQL `scan_job`, `scan_draft`, `scan_attempt`, and `outbox_event` tables. The outbox relay marks an event published only after a RabbitMQ publisher confirm and successful routing. Duplicate deliveries are guarded by a processing claim; stale claims are retried up to three times.
-- Scan images are private Google Cloud Storage objects in every environment. Local development uses Google ADC; GCE production uses its attached service account. Never make the bucket public. The retention job deletes unkept images after `SCAN_RETENTION_DAYS` (30 by default).
-- The `ai` layer owns Mistral extraction, bounded retries, field validation, and editable draft calculation. The service worker owns storage retrieval and persistence; the AI layer never posts financial records.
-- Mistral OCR only proposes fields. Draft totals and final line totals are recalculated in the application; confirmation calls the existing financial purchase posting service and changes outstanding only after that transaction commits. The shopkeeper must explicitly confirm any `paidNow` amount.
-- RabbitMQ is the scan queue. Redis is included in Compose only for optional disposable read caching; it is not used for ledger or balance decisions.
-- Session writes require the `X-XSRF-TOKEN` cookie/header pair. Browser requests use credentials and one of the configured exact origins: `FRONTEND_ORIGIN` or optional `FRONTEND_ADDITIONAL_ORIGIN`.
+- **Core stack:** Java 21, Spring Boot 4, Spring Security, Hibernate/JPA, Flyway, MySQL 8.4, and RabbitMQ. Controllers bind HTTP, services own validation and transactions, repositories handle persistence, and DTOs define API contracts.
+- **Schema:** Flyway creates and evolves the `utf8mb4` tables; Hibernate validates mappings at startup. MySQL stores account holders, businesses, customers, ledger events, commitments, scan state, idempotency records, and audit events.
+- **Authentication:** Email codes and verified Google ID tokens are passwordless options. Google identities use the stable Google subject; email identities use a normalized verified address. They are linked only by the signed-in account holder. Email challenges are HMAC-hashed, expire, and have attempt and request limits.
+- **Financial integrity:** Amounts use `BigDecimal` and line totals round to paise. Financial POSTs require an idempotency key, lock the customer row, validate the current balance, and commit the event with an audit row. Promise allocations are validated separately from payments.
+- **Session and tenant security:** MySQL-backed Spring Session holds browser sessions. Writes require the CSRF cookie/header pair, credentialed requests are limited to configured frontend origins, and resources are scoped to the signed-in business.
+- **Notifications:** A provider strategy supports email, SMS, and WhatsApp integrations. Reminder previews are generated from server-side ledger data; sending remains an owner action in the client.
+- **Verification:** The test suite covers authentication flows, security configuration, scan drafting and processing, and scan/financial consistency. The deployment workflow runs Maven verification before publishing an image.
+
+Redis is present in the Compose environment only for optional disposable read caching. It is not used to decide ledger balances.
 
 ## API routes
 
@@ -105,8 +101,16 @@ All routes use `/api/v1`. CSRF bootstrap, authentication config, Google and emai
 
 Scan upload requires `Idempotency-Key`; the multipart form may include `keepAttachment=true` to retain the original image beyond its review period. Status and image requests return 404 when the scan belongs to another business.
 
-For production, configure `OTP_HASH_SECRET` and `FRONTEND_ORIGIN`. The deployment also allows `https://www.baakio.shop` through `FRONTEND_ADDITIONAL_ORIGIN`, because the public site currently redirects to `www`. The VM configuration enables email codes with Resend SMTP using `login@auth.baakio.shop`; its SMTP password comes from the `baakio-resend-smtp-key` Secret Manager secret. It caps email code requests at 80 per day. Google login stays unavailable until the `baakio-google-client-id` secret contains a Web client ID authorized for both `https://baakio.shop` and `https://www.baakio.shop`. Keep `COOKIE_SECURE=true` behind HTTPS. The frontend and API use subdomains of the same site so credentialed browser requests can use the API session cookie; the API sends CSRF tokens through `/api/v1/csrf` for cross-origin writes.
+## Deployment
 
-For document storage, set `GCP_PROJECT_ID` and `GCS_BUCKET`. Local development uses `GCP_ADC_HOST_PATH` in Compose; GCE uses its attached service account. Grant the API identity only the required object read/write/delete permissions on the private bucket. Set `MISTRAL_API_KEY` to activate OCR extraction.
+The production design separates the public React site on Vercel from the API at `https://api.baakio.shop`. The API runs in a versioned container on a Google Compute Engine VM. Caddy serves HTTPS and proxies to the Java service; the VM also runs RabbitMQ and the Cloud SQL Auth Proxy on a private Docker network. Cloud SQL hosts MySQL, and a private Cloud Storage bucket holds bill images. The VM's service account reads runtime secrets and accesses Google Cloud services without a stored service-account key.
 
-See the design pack at `../baakio-design-pack` for the product, UX, and domain rules.
+The release path is automated in [`.github/workflows/deploy-vm.yml`](.github/workflows/deploy-vm.yml):
+
+1. A pull request runs `mvn -B verify`. A push to `main` runs the same verification before deployment.
+2. GitHub Actions builds a container tagged with the commit SHA and pushes it to Artifact Registry. Workload Identity Federation gives the workflow short-lived Google Cloud access.
+3. The workflow transfers release files to the VM through Identity-Aware Proxy. The release script reads secrets, renders runtime settings, pulls the tagged image, and updates the Compose stack.
+4. The VM checks the API's local health endpoint before Caddy is reloaded. If the release or Caddy validation fails, the script restores the previous image and configuration.
+5. The workflow checks the public HTTPS API and the frontend origin's credentialed CORS response. The [frontend workflow](https://github.com/sanjaygupta45/Baakio-fe/blob/main/.github/workflows/deploy-vercel.yml) deploys the site to Vercel separately.
+
+Operations are part of the design: Cloud SQL managed backups, a public uptime check, TLS and resource alerts, VM telemetry, and a five-minute watch service cover the pilot deployment. The current single-VM architecture is a single point of failure; the [deployment runbook](deploy/vm/README.md) records provisioning, rollback, monitoring, backup verification, and recovery steps.
