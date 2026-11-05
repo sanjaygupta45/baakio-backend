@@ -8,6 +8,7 @@ import com.baakio.repository.AccountIdentityRepository;
 import com.baakio.repository.BusinessRepository;
 import com.baakio.security.AccountHolderPrincipal;
 import com.baakio.service.AccountHolderService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -23,13 +24,14 @@ class EmailAuthServiceTest {
     private final AccountHolderRepository holders = mock(AccountHolderRepository.class);
     private final BusinessRepository businesses = mock(BusinessRepository.class);
     private final AccountHolderService holderService = mock(AccountHolderService.class);
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private EmailAuthService service;
     private final EmailOtpVerifyRequest request = new EmailOtpVerifyRequest(
             "OWNER@EXAMPLE.COM", "challenge-1", "123456", "Owner", "Shop", "en-IN");
 
     @BeforeEach
     void setUp() {
-        service = new EmailAuthService(codes, identities, holders, businesses, holderService);
+        service = new EmailAuthService(codes, identities, holders, businesses, holderService, events);
     }
 
     @Test

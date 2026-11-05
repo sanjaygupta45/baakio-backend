@@ -4,6 +4,7 @@ import com.baakio.exception.NotificationDeliveryException;
 import com.baakio.enums.NotificationChannel;
 import com.baakio.notification.NotificationMessage;
 import com.baakio.notification.email.AuthenticationEmailTemplate;
+import com.baakio.notification.email.WelcomeEmailTemplate;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.core.io.ClassPathResource;
@@ -24,13 +25,15 @@ public class SmtpEmailNotificationProvider implements NotificationProvider {
     private final JavaMailSender mailSender;
     private final String fromAddress;
     private final AuthenticationEmailTemplate authTemplate;
+    private final WelcomeEmailTemplate welcomeTemplate;
 
     public SmtpEmailNotificationProvider(JavaMailSender mailSender,
             @Value("${baakio.notifications.email.from}") String fromAddress,
-            AuthenticationEmailTemplate authTemplate) {
+            AuthenticationEmailTemplate authTemplate, WelcomeEmailTemplate welcomeTemplate) {
         this.mailSender = mailSender;
         this.fromAddress = fromAddress;
         this.authTemplate = authTemplate;
+        this.welcomeTemplate = welcomeTemplate;
     }
 
     @Override public String id() { return "smtp"; }
@@ -43,6 +46,10 @@ public class SmtpEmailNotificationProvider implements NotificationProvider {
             sendAuthenticationCode(message);
             return;
         }
+        if ("welcome".equals(message.templateName())) {
+            sendWelcomeEmail(message);
+            return;
+        }
         SimpleMailMessage email = new SimpleMailMessage();
         email.setFrom(fromAddress);
         email.setTo(message.recipient());
@@ -53,17 +60,30 @@ public class SmtpEmailNotificationProvider implements NotificationProvider {
 
     private void sendAuthenticationCode(NotificationMessage message) {
         AuthenticationEmailTemplate.RenderedEmail rendered = authTemplate.render(message);
+        sendHtmlEmail(message.recipient(), rendered.subject(), rendered.plainText(), rendered.htmlText(),
+                "The authentication email could not be prepared.");
+    }
+
+    private void sendWelcomeEmail(NotificationMessage message) {
+        WelcomeEmailTemplate.RenderedEmail rendered = welcomeTemplate.render(message);
+        sendHtmlEmail(message.recipient(), rendered.subject(), rendered.plainText(), rendered.htmlText(),
+                "The welcome email could not be prepared.");
+    }
+
+    private void sendHtmlEmail(String recipient, String subject, String plainText, String htmlText,
+            String errorMessage) {
         try {
             MimeMessage email = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(email, true, StandardCharsets.UTF_8.name());
             helper.setFrom(fromAddress, "Baakio");
-            helper.setTo(message.recipient());
-            helper.setSubject(rendered.subject());
-            helper.setText(rendered.plainText(), rendered.htmlText());
+            helper.setTo(recipient);
+            helper.setSubject(subject);
+            helper.setText(plainText, htmlText);
             helper.addInline("baakio-logo", new ClassPathResource("email/baakio-logo.png"), "image/png");
             mailSender.send(email);
         } catch (MessagingException | UnsupportedEncodingException exception) {
-            throw new NotificationDeliveryException("The authentication email could not be prepared.", exception);
+            throw new NotificationDeliveryException(errorMessage, exception);
         }
     }
+
 }

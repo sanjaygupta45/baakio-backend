@@ -9,6 +9,7 @@ import com.baakio.repository.AccountHolderRepository;
 import com.baakio.exception.ApiException;
 import com.baakio.utils.IndianPhoneNumbers;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,11 +21,14 @@ import java.util.UUID;
 public class AccountHolderRegistrationService {
     private final AccountHolderRepository accountHolders;
     private final BusinessRepository businesses;
+    private final ApplicationEventPublisher events;
 
     public AccountHolderRegistrationService(AccountHolderRepository accountHolders,
-                                            BusinessRepository businesses) {
+                                            BusinessRepository businesses,
+                                            ApplicationEventPublisher events) {
         this.accountHolders = accountHolders;
         this.businesses = businesses;
+        this.events = events;
     }
 
     @Transactional
@@ -56,6 +60,9 @@ public class AccountHolderRegistrationService {
         // Flush here so business persistence errors surface inside this method
         // and the surrounding transaction rolls back before a response is built.
         businesses.saveAndFlush(business);
+        if (email != null) {
+            events.publishEvent(new ShopCreatedEvent(accountHolderId, email, displayName, businessName, locale));
+        }
         return new AccountHolderPrincipal(accountHolderId, businessId, businessName,
                 displayName, phone, email, true);
     }

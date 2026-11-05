@@ -7,19 +7,23 @@ import com.baakio.security.AccountHolderPrincipal;
 import com.baakio.repository.BusinessRepository;
 import com.baakio.repository.AccountHolderRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class AccountHolderRegistrationServiceTest {
 
     @Test
     void savesAccountHolderAndBusinessAndBuildsPrincipalWithoutReloadingThem() {
         FakeRepositories repositories = new FakeRepositories();
+        ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
         AccountHolderRegistrationService registrations = new AccountHolderRegistrationService(
-                repositories.accountHolders, repositories.businesses);
+                repositories.accountHolders, repositories.businesses, events);
 
         AccountHolderPrincipal principal = registrations.register(new RegisterRequest(
                 "+919876543210", "challenge-id", "123456", " Account Holder ", " My Shop ",
@@ -35,6 +39,8 @@ class AccountHolderRegistrationServiceTest {
         assertEquals("+919876543210", principal.phoneNumber());
         assertEquals("holder@example.com", principal.email());
         assertEquals(accountHolder.getId(), business.getAccountHolderId());
+        verify(events).publishEvent(new ShopCreatedEvent(accountHolder.getId(), "holder@example.com",
+                "Account Holder", "My Shop", "hi-IN"));
     }
 
     private static final class FakeRepositories {

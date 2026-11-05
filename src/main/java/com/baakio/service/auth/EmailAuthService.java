@@ -11,6 +11,7 @@ import com.baakio.repository.BusinessRepository;
 import com.baakio.security.AccountHolderPrincipal;
 import com.baakio.service.AccountHolderService;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,15 +25,17 @@ public class EmailAuthService {
     private final AccountHolderRepository accountHolders;
     private final BusinessRepository businesses;
     private final AccountHolderService accountHolderService;
+    private final ApplicationEventPublisher events;
 
     public EmailAuthService(EmailOtpService codes, AccountIdentityRepository identities,
             AccountHolderRepository accountHolders, BusinessRepository businesses,
-            AccountHolderService accountHolderService) {
+            AccountHolderService accountHolderService, ApplicationEventPublisher events) {
         this.codes = codes;
         this.identities = identities;
         this.accountHolders = accountHolders;
         this.businesses = businesses;
         this.accountHolderService = accountHolderService;
+        this.events = events;
     }
 
     @Transactional
@@ -63,6 +66,8 @@ public class EmailAuthService {
             business.setDefaultLocale(locale);
             businesses.saveAndFlush(business);
             identities.add("EMAIL", email, id);
+            events.publishEvent(new ShopCreatedEvent(id, email, request.displayName().trim(),
+                    request.businessName().trim(), locale));
         } catch (DataIntegrityViolationException exception) {
             throw new ApiException(HttpStatus.CONFLICT, "ACCOUNT_LINK_REQUIRED", "This email already belongs to an account.");
         }

@@ -42,4 +42,20 @@ public record NotificationMessage(
                 "Your Baakio verification code is " + code + ".",
                 null, languageCode, List.of(code), expiresInSeconds, referenceId, purpose);
     }
+
+    public static NotificationMessage welcome(String recipient, String displayName,
+                                              String businessName, String locale) {
+        String languageCode = "hi-IN".equals(locale) ? "hi" : "en";
+        String safeDisplayName = displayName == null ? "" : displayName;
+        String safeBusinessName = businessName == null ? "" : businessName;
+        return new NotificationMessage(recipient, NotificationType.TEMPLATE,
+                languageCode.equals("hi")
+                        ? "Baakio में आपका स्वागत है — आपकी दुकान तैयार है"
+                        : "Welcome to Baakio — your shop is ready",
+                languageCode.equals("hi")
+                        ? "आपकी Baakio दुकान तैयार है।"
+                        : "Your Baakio shop is ready.",
+                "welcome", languageCode, List.of(safeDisplayName, safeBusinessName),
+                null, null, null);
+    }
 }

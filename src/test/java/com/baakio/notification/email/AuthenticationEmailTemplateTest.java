@@ -59,7 +59,8 @@ class AuthenticationEmailTemplateTest {
         JavaMailSender sender = mock(JavaMailSender.class);
         MimeMessage mime = new MimeMessage(Session.getInstance(new Properties()));
         when(sender.createMimeMessage()).thenReturn(mime);
-        var provider = new SmtpEmailNotificationProvider(sender, "login@auth.baakio.shop", template);
+        var provider = new SmtpEmailNotificationProvider(sender, "login@auth.baakio.shop", template,
+                new WelcomeEmailTemplate("https://www.baakio.shop"));
 
         provider.send(NotificationChannel.EMAIL, NotificationMessage.emailOtp("owner@example.com",
                 "654321", "en-IN", "request-4", 300, EmailOtpPurpose.LOGIN));

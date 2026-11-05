@@ -10,6 +10,7 @@ import com.baakio.repository.BusinessRepository;
 import com.baakio.security.AccountHolderPrincipal;
 import com.baakio.service.AccountHolderService;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,15 +24,17 @@ public class FederatedAuthService {
     private final AccountHolderRepository accountHolders;
     private final BusinessRepository businesses;
     private final AccountHolderService accountHolderService;
+    private final ApplicationEventPublisher events;
 
     public FederatedAuthService(GoogleIdentityVerifier verifier, AccountIdentityRepository identities,
             AccountHolderRepository accountHolders, BusinessRepository businesses,
-            AccountHolderService accountHolderService) {
+            AccountHolderService accountHolderService, ApplicationEventPublisher events) {
         this.verifier = verifier;
         this.identities = identities;
         this.accountHolders = accountHolders;
         this.businesses = businesses;
         this.accountHolderService = accountHolderService;
+        this.events = events;
     }
 
     @Transactional
@@ -57,6 +60,8 @@ public class FederatedAuthService {
             business.setDefaultLocale(locale);
             businesses.saveAndFlush(business);
             identities.add("GOOGLE", google.subject(), id);
+            events.publishEvent(new ShopCreatedEvent(id, google.email(), displayName,
+                    request.businessName().trim(), locale));
         } catch (DataIntegrityViolationException exception) {
             throw linkRequired();
         }

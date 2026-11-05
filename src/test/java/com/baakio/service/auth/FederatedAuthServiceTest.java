@@ -9,6 +9,7 @@ import com.baakio.repository.AccountIdentityRepository;
 import com.baakio.repository.BusinessRepository;
 import com.baakio.security.AccountHolderPrincipal;
 import com.baakio.service.AccountHolderService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -25,11 +26,12 @@ class FederatedAuthServiceTest {
     private final AccountHolderRepository holders = mock(AccountHolderRepository.class);
     private final BusinessRepository businesses = mock(BusinessRepository.class);
     private final AccountHolderService holderService = mock(AccountHolderService.class);
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private FederatedAuthService service;
 
     @BeforeEach
     void setUp() {
-        service = new FederatedAuthService(verifier, identities, holders, businesses, holderService);
+        service = new FederatedAuthService(verifier, identities, holders, businesses, holderService, events);
         when(verifier.verify("valid-id-token")).thenReturn(
                 new GoogleIdentityVerifier.VerifiedGoogleIdentity("google-sub-123", "owner@example.com", "Owner"));
     }
@@ -74,6 +76,7 @@ class FederatedAuthServiceTest {
         assertNull(account.getValue().getPhoneE164());
         assertEquals(account.getValue().getId(), business.getValue().getAccountHolderId());
         verify(identities).add("GOOGLE", "google-sub-123", principal.id());
+        verify(events).publishEvent(new ShopCreatedEvent(principal.id(), "owner@example.com", "Owner", "Shop", "en-IN"));
     }
 
     @Test
