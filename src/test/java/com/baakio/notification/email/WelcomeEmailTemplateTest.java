@@ -31,11 +31,14 @@ class WelcomeEmailTemplateTest {
         assertTrue(rendered.htmlText().contains("Welcome to Baakio, Sanjay"));
         assertTrue(rendered.htmlText().contains("Sharma Hardware"));
         assertTrue(rendered.htmlText().contains("https://www.baakio.shop/app.html"));
-        assertTrue(rendered.htmlText().contains("8738074517"));
-        assertTrue(rendered.htmlText().contains("baakio.shop@gmail.com"));
+        assertTrue(rendered.htmlText().contains("aria-label=\"WhatsApp\""));
+        assertTrue(rendered.htmlText().contains("aria-label=\"Email\""));
         assertTrue(rendered.htmlText().contains("https://x.com/Dev_Sanjay2004"));
         assertTrue(rendered.htmlText().contains("https://www.baakio.shop/privacy.html"));
         assertTrue(rendered.plainText().contains("Record sales and payments"));
+        assertFalse(rendered.htmlText().contains("A quick note about Baakio"));
+        assertFalse(rendered.plainText().contains("WhatsApp: 8738074517"));
+        assertFalse(rendered.plainText().contains("Email: baakio.shop@gmail.com"));
         assertFalse(rendered.htmlText().contains("{{"));
     }
 
@@ -66,7 +69,8 @@ class WelcomeEmailTemplateTest {
         assertTrue(mime.getContentType().contains("multipart/"));
         String content = allText(mime);
         assertTrue(content.contains("Open your Baakio account"));
-        assertTrue(content.contains("8738074517"));
+        assertTrue(content.contains("aria-label"));
+        assertTrue(content.contains("WhatsApp"));
         assertTrue(content.contains("https://www.baakio.shop/app.html"));
         assertTrue(hasInlineLogo(mime));
     }

@@ -52,10 +52,7 @@ public class WelcomeEmailTemplate {
                 .replace("{{STEP2_BODY}}", escape(copy.step2Body()))
                 .replace("{{STEP3_TITLE}}", escape(copy.step3Title()))
                 .replace("{{STEP3_BODY}}", escape(copy.step3Body()))
-                .replace("{{NOTE_HEADING}}", escape(copy.noteHeading()))
-                .replace("{{NOTE_BODY}}", escape(copy.noteBody()))
                 .replace("{{CONTACT_HEADING}}", escape(copy.contactHeading()))
-                .replace("{{CONTACT_BODY}}", escape(copy.contactBody()))
                 .replace("{{WHATSAPP_URL}}", escape(whatsappUrl))
                 .replace("{{EMAIL_URL}}", escape(emailUrl))
                 .replace("{{X_URL}}", escape(xUrl))
@@ -68,9 +65,8 @@ public class WelcomeEmailTemplate {
                 + "1. " + copy.step1Title() + " — " + copy.step1Body() + "\n"
                 + "2. " + copy.step2Title() + " — " + copy.step2Body() + "\n"
                 + "3. " + copy.step3Title() + " — " + copy.step3Body() + "\n\n"
-                + copy.noteHeading() + "\n" + copy.noteBody() + "\n\n"
-                + copy.contactHeading() + "\n" + copy.contactBody() + "\n"
-                + "WhatsApp: " + whatsappUrl + "\nEmail: baakio.shop@gmail.com\nX: " + xUrl + "\n\n"
+                + copy.contactHeading() + "\n"
+                + "Support links: WhatsApp · Email · X\n\n"
                 + "Open Baakio: " + appUrl + "\nPrivacy: " + privacyUrl + "\nTerms: " + termsUrl + "\n\n"
                 + copy.footer();
 
@@ -100,10 +96,7 @@ public class WelcomeEmailTemplate {
             String step2Body,
             String step3Title,
             String step3Body,
-            String noteHeading,
-            String noteBody,
             String contactHeading,
-            String contactBody,
             String footer
     ) {
         static WelcomeCopy english(String displayName, String businessName) {
@@ -116,9 +109,7 @@ public class WelcomeEmailTemplate {
                     "Add your customers", "Save names and existing balances.",
                     "Record sales and payments", "Keep every purchase and payment together.",
                     "Set a promise and follow up", "Know the next date and review reminders before sharing.",
-                    "A quick note about Baakio",
-                    "Baakio does not collect payments or send WhatsApp messages automatically. AI bill scans create drafts—you review and approve them before saving.",
-                    "Need help?", "WhatsApp: 8738074517 · Email: baakio.shop@gmail.com",
+                    "Need help?",
                     "Every outstanding payment, made clear.");
         }
 
@@ -132,9 +123,7 @@ public class WelcomeEmailTemplate {
                     "ग्राहक जोड़ें", "नाम और पहले से बाकी रकम सेव करें।",
                     "बिल और भुगतान दर्ज करें", "हर खरीद और भुगतान एक ही खाते में रखें।",
                     "भुगतान का वादा और फॉलो-अप रखें", "अगली तारीख देखें और भेजने से पहले रिमाइंडर जाँचें।",
-                    "Baakio के बारे में एक जरूरी बात",
-                    "Baakio भुगतान नहीं लेता और WhatsApp संदेश अपने आप नहीं भेजता। AI बिल स्कैन पहले ड्राफ्ट बनाता है—सेव करने से पहले आप जाँचकर मंज़ूर करते हैं।",
-                    "मदद चाहिए?", "WhatsApp: 8738074517 · ईमेल: baakio.shop@gmail.com",
+                    "मदद चाहिए?",
                     "हर बाकी का साफ़ हिसाब।");
         }
     }
