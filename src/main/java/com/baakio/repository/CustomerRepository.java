@@ -40,5 +40,6 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     Optional<Customer> findLockedByBusinessIdAndId(@Param("businessId") String businessId,
             @Param("customerId") long customerId);
 
-    List<Long> findIdsByBusinessIdOrderByCreatedAtDescIdDesc(String businessId);
+    @Query("select c.id from Customer c where c.businessId = :businessId order by c.createdAt desc, c.id desc")
+    List<Long> findIdsByBusinessIdOrderByCreatedAtDescIdDesc(@Param("businessId") String businessId);
 }

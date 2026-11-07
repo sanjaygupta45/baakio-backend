@@ -6,6 +6,7 @@ import com.baakio.model.Customer;
 import com.baakio.repository.AccountHolderRepository;
 import com.baakio.security.AccountHolderPrincipal;
 import com.baakio.dto.scan.StoredDocument;
+import com.baakio.service.DashboardService;
 import com.baakio.service.DocumentStorage;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -31,6 +32,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BaakioApplicationTests {
 	@Autowired
 	private AccountHolderRepository accountHolders;
+	@Autowired
+	private DashboardService dashboard;
 
 	@PersistenceContext
 	private EntityManager entityManager;
@@ -74,5 +77,39 @@ class BaakioApplicationTests {
 				"+919876543210", PageRequest.of(0, 1)).getFirst();
 		assertEquals(accountHolderId, principal.id());
 		assertEquals(businessId, principal.businessId());
+	}
+
+	@Test
+	@Transactional
+	void dashboardReturnsExistingCustomerRecords() {
+		String accountHolderId = UUID.randomUUID().toString();
+		String businessId = UUID.randomUUID().toString();
+		AccountHolder accountHolder = new AccountHolder(accountHolderId, null, "dashboard@example.com",
+				"Dashboard User", "en-IN");
+		entityManager.persist(accountHolder);
+		entityManager.persist(new Business(businessId, "Dashboard Shop", accountHolderId));
+
+		Customer customer = new Customer(businessId, "Dashboard Customer", null, null, "en-IN");
+		entityManager.persist(customer);
+		entityManager.flush();
+		entityManager.createNativeQuery("""
+				insert into purchase (business_id, customer_id, occurred_on, entry_mode, description,
+				    subtotal, discount, total, account_holder_id, posted_at)
+				values (:businessId, :customerId, CURRENT_DATE, 'QUICK', 'Dashboard purchase',
+				    1250.00, 0.00, 1250.00, :accountHolderId, CURRENT_TIMESTAMP)
+				""")
+				.setParameter("businessId", businessId)
+				.setParameter("customerId", customer.getId())
+				.setParameter("accountHolderId", accountHolderId)
+				.executeUpdate();
+		entityManager.flush();
+		entityManager.clear();
+
+		var result = dashboard.get(businessId, null);
+
+		assertEquals("1250.00", result.totalOutstanding());
+		assertEquals(1, result.customersWithOutstanding());
+		assertEquals(1, result.attentionCustomers().size());
+		assertEquals(customer.getId(), result.attentionCustomers().getFirst().id());
 	}
 }
