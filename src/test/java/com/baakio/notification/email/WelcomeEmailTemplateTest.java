@@ -33,7 +33,7 @@ class WelcomeEmailTemplateTest {
         assertTrue(rendered.htmlText().contains("https://www.baakio.shop/app.html"));
         assertTrue(rendered.htmlText().contains("aria-label=\"WhatsApp\""));
         assertTrue(rendered.htmlText().contains("aria-label=\"Email\""));
-        assertTrue(rendered.htmlText().contains("https://x.com/Dev_Sanjay2004"));
+        assertTrue(rendered.htmlText().contains("https://x.com/Baakiopz"));
         assertTrue(rendered.htmlText().contains("https://www.baakio.shop/privacy.html"));
         assertTrue(rendered.plainText().contains("Record sales and payments"));
         assertFalse(rendered.htmlText().contains("A quick note about Baakio"));

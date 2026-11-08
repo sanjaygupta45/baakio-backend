@@ -36,7 +36,7 @@ public class WelcomeEmailTemplate {
         String termsUrl = frontendUrl + "/terms.html";
         String whatsappUrl = "https://wa.me/918738074517";
         String emailUrl = "mailto:baakio.shop@gmail.com";
-        String xUrl = "https://x.com/Dev_Sanjay2004";
+        String xUrl = "https://x.com/Baakiopz";
 
         String htmlText = htmlTemplate
                 .replace("{{LANG}}", hindi ? "hi" : "en")
