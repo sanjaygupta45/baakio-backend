@@ -82,6 +82,10 @@ public class EmailOtpService {
             throw new ApiException(HttpStatus.CONFLICT, "EMAIL_ALREADY_REGISTERED",
                     "An account already exists with this email. Sign in instead.");
         }
+        if (purpose == EmailOtpPurpose.LOGIN && identities.accountHolderId("EMAIL", email).isEmpty()
+                && accountHolders.existsByEmailIgnoreCase(email)) {
+            throw emailSignInNotLinked();
+        }
         challenges.acquireGlobalRequestLock();
         challenges.acquireRequestLock(email);
         Instant now = Instant.now();
@@ -132,6 +136,11 @@ public class EmailOtpService {
     private void requireEnabled() {
         if (!enabled) throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
                 "EMAIL_AUTH_NOT_CONFIGURED", "Email sign-in is not configured.");
+    }
+
+    private ApiException emailSignInNotLinked() {
+        return new ApiException(HttpStatus.CONFLICT, "EMAIL_SIGN_IN_NOT_LINKED",
+                "This account does not use email sign-in. Sign in using its current method, or link this email in settings.");
     }
 
     private String hash(String id, String email, String code) {

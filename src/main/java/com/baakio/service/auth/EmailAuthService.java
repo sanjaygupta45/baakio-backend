@@ -45,8 +45,11 @@ public class EmailAuthService {
         String email = EmailOtpService.normalize(request.email());
         String existingId = identities.accountHolderId("EMAIL", email).orElse(null);
         if (purpose == EmailOtpPurpose.LOGIN) {
-            if (existingId == null) throw new ApiException(HttpStatus.UNAUTHORIZED, "ACCOUNT_HOLDER_NOT_FOUND",
-                    "No account uses this verified email.");
+            if (existingId == null) {
+                if (accountHolders.existsByEmailIgnoreCase(email)) throw emailSignInNotLinked();
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "ACCOUNT_HOLDER_NOT_FOUND",
+                        "No account uses this verified email.");
+            }
             return accountHolderService.principalById(existingId);
         }
         if (existingId != null || accountHolders.existsByEmailIgnoreCase(email)) {
@@ -102,5 +105,10 @@ public class EmailAuthService {
     private ApiException emailAlreadyRegistered() {
         return new ApiException(HttpStatus.CONFLICT, "EMAIL_ALREADY_REGISTERED",
                 "An account already exists with this email. Sign in instead.");
+    }
+
+    private ApiException emailSignInNotLinked() {
+        return new ApiException(HttpStatus.CONFLICT, "EMAIL_SIGN_IN_NOT_LINKED",
+                "This account does not use email sign-in. Sign in using its current method, or link this email in settings.");
     }
 }
