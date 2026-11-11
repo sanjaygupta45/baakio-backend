@@ -57,6 +57,7 @@ public class OpenRouterScanExtractor implements ScanExtractor {
                                 Map.of("type", "text", "text", EXTRACTION_PROMPT),
                                 Map.of("type", "image_url", "image_url", Map.of("url", dataUrl))))),
                 "response_format", Map.of("type", "json_object"),
+                "max_tokens", 2048,
                 "temperature", 0);
         JsonNode response = client.post().uri("/chat/completions")
                 .contentType(MediaType.APPLICATION_JSON)

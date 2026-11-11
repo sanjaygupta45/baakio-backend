@@ -31,6 +31,7 @@ class OpenRouterScanExtractorTest {
                 .andExpect(content().string(org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.containsString("qwen/qwen3-vl-8b-instruct"),
                         org.hamcrest.Matchers.containsString("data:image/png;base64,aW1hZ2U="),
+                        org.hamcrest.Matchers.containsString("\"max_tokens\":2048"),
                         org.hamcrest.Matchers.containsString("\"response_format\":{\"type\":\"json_object\"}"))))
                 .andRespond(withSuccess("""
                         {"choices":[{"message":{"content":"{\\"is_new_purchase\\":true,\\"occurred_on\\":\\"2026-11-11\\",\\"description\\":\\"Groceries\\",\\"discount\\":null,\\"written_total\\":\\"125.00\\",\\"items\\":[]}"}}]}
