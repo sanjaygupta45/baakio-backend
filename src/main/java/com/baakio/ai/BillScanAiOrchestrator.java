@@ -44,7 +44,7 @@ public class BillScanAiOrchestrator {
                 if (attempt < 2) Thread.sleep(attempt == 0 ? 500 : 1500);
             }
         }
-        throw last == null ? new IllegalStateException("Mistral OCR did not return a draft.") : last;
+        throw last == null ? new IllegalStateException("Bill scanning did not return a draft.") : last;
     }
 
     private BigDecimal decimal(String value) {

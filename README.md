@@ -30,7 +30,7 @@ flowchart LR
     Proxy --> SQL[(Cloud SQL MySQL)]
     API --> GCS[Private Cloud Storage]
     Worker --> GCS
-    Worker --> OCR[Mistral OCR]
+    Worker --> OCR[OpenRouter vision model]
 ```
 
 **Stack:** Java 21 · Spring Boot 4 · Spring Security · Hibernate/JPA · Flyway · MySQL 8.4 · RabbitMQ. MySQL holds the financial source of truth; Redis is not used for balance decisions.
@@ -42,7 +42,7 @@ flowchart TD
     A[Owner uploads bill image] --> B[Validate image and store privately]
     B --> C[MySQL: scan job + outbox event]
     C --> D[Outbox relay publishes to RabbitMQ]
-    D --> E[Worker reads image and calls Mistral OCR]
+    D --> E[Worker reads image and calls OpenRouter]
     E --> F{Usable new purchase?}
     F -->|No| X[Failed scan: manual entry available]
     F -->|Yes| G[Editable draft with uncertainty flags]

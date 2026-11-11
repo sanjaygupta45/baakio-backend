@@ -69,7 +69,7 @@ gcloud projects add-iam-policy-binding "$project" \
   --member="serviceAccount:$vm_sa" --role=roles/cloudsql.client >/dev/null
 
 for name in baakio-db-password baakio-db-root-password baakio-rabbit-password \
-  baakio-otp-hash-secret baakio-mistral-api-key baakio-resend-smtp-key \
+  baakio-otp-hash-secret baakio-openrouter-api-key baakio-resend-smtp-key \
   baakio-google-client-id; do
   if ! gcloud secrets describe "$name" --project "$project" >/dev/null 2>&1; then
     gcloud secrets create "$name" --project "$project" --replication-policy=automatic
@@ -211,6 +211,6 @@ Reserved IP: $address
 GitHub variable GCP_WIF_PROVIDER: $provider
 GitHub variable GCP_DEPLOY_SERVICE_ACCOUNT: $deploy_sa
 Cloud SQL instance: $sql_instance (db-f1-micro, MySQL 8.4, 28 daily backups)
-Next: add versions for Mistral, Resend SMTP, and Google client-ID secrets;
+Next: add versions for OpenRouter, Resend SMTP, and Google client-ID secrets;
 bootstrap the VM; configure a billing budget and monitoring alerts; then run the deployment workflow.
 EOF

@@ -12,7 +12,7 @@ SECRETS = {
     "DB_PASSWORD": "baakio-db-password",
     "RABBITMQ_PASSWORD": "baakio-rabbit-password",
     "OTP_HASH_SECRET": "baakio-otp-hash-secret",
-    "MISTRAL_API_KEY": "baakio-mistral-api-key",
+    "OPENROUTER_API_KEY": "baakio-openrouter-api-key",
     "SPRING_MAIL_PASSWORD": "baakio-resend-smtp-key",
     "GOOGLE_CLIENT_ID": "baakio-google-client-id",
 }

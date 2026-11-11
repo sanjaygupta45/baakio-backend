@@ -15,7 +15,7 @@ flowchart LR
   end
   P --> M[(Cloud SQL MySQL 8.4<br/>db-f1-micro)]
   A --> G[Private bill-image bucket]
-  A --> X[Resend SMTP and Mistral OCR]
+  A --> X[Resend SMTP and OpenRouter bill scanning]
   M -. managed daily backups .-> K[Cloud SQL backup storage]
 ```
 
@@ -31,14 +31,14 @@ calculator](https://cloud.google.com/products/calculator) for a continuously
 running `e2-medium` in Mumbai, a 20 GB balanced persistent disk, reserved
 external IPv4 address, a `db-f1-micro` Cloud SQL MySQL instance with 10 GB SSD
 and managed backups, image storage, and expected egress. Include
-Resend, Mistral OCR, and Vercel in the overall operating estimate. Trial
+Resend, OpenRouter usage, and Vercel in the overall operating estimate. Trial
 credits end; the cost continues afterward. Set a monthly project billing budget
 with 50%, 80%, and 100% alerts. Budget alerts do not stop spending.
 
 For a 730-hour month, the initial planning estimate is roughly **US$45–60 per
 month** for the VM, Cloud SQL shared-core instance, 20 GB VM disk, 10 GB
 database disk, in-use external IPv4 address, and small backup/image storage.
-Traffic, extra storage, taxes, Resend, Mistral, and Vercel are additional. This
+Traffic, extra storage, taxes, Resend, OpenRouter, and Vercel are additional. This
 is a planning range; verify the Mumbai prices in the calculator and set the
 billing budget before leaving the services running.
 
@@ -64,12 +64,13 @@ The script prints the reserved IP and two GitHub Actions variable values. Add
 repository's **Settings → Secrets and variables → Actions → Variables**.
 Those variables were added to the repository on 2 November 2026.
 
-The following three secrets were created **without versions** and now have
-enabled versions supplied through Secret Manager in the new project:
+Provisioning creates `baakio-openrouter-api-key` without a value. Before
+deploying bill scanning, add an enabled version containing the OpenRouter API
+key through Secret Manager. The existing Resend and Google client-ID secrets
+have enabled versions:
 
 | Secret | Value |
 | --- | --- |
-| `baakio-mistral-api-key` | Mistral API key for bill extraction |
 | `baakio-resend-smtp-key` | Resend SMTP key for email codes |
 | `baakio-google-client-id` | New Google OAuth Web client ID |
 
