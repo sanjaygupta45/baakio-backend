@@ -1,6 +1,8 @@
 package com.baakio.messaging;
 
 import com.baakio.config.RabbitMqConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.core.MessageDeliveryMode;
@@ -17,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 @Component
 @ConditionalOnProperty(name = "baakio.scan.messaging.enabled", havingValue = "true", matchIfMissing = true)
 public class ScanOutboxRelay {
+    private static final Logger log = LoggerFactory.getLogger(ScanOutboxRelay.class);
     private final JdbcTemplate jdbc;
     private final RabbitTemplate rabbit;
     private final TransactionTemplate transactions;
@@ -63,6 +66,8 @@ public class ScanOutboxRelay {
         } catch (Exception exception) {
             String message = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
             if (message.length() > 480) message = message.substring(0, 480);
+            log.warn("Failed to publish scan outbox event {} ({}); it will be retried.",
+                    event.id(), exception.getClass().getSimpleName());
             jdbc.update("update outbox_event set claimed_until=DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 30 SECOND), last_error=? where id=? and published_at is null",
                     message, event.id());
         }
