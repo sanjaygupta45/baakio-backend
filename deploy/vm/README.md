@@ -67,7 +67,15 @@ Those variables were added to the repository on 2 November 2026.
 Provisioning creates `baakio-openrouter-api-key` without a value. Before
 deploying bill scanning, add an enabled version containing the OpenRouter API
 key through Secret Manager. The existing Resend and Google client-ID secrets
-have enabled versions:
+have enabled versions. If the OpenRouter secret was created outside
+`provision-cloud.sh`, grant the VM service account access to that secret:
+
+```sh
+gcloud secrets add-iam-policy-binding baakio-openrouter-api-key \
+  --project baakio-513506 \
+  --member="serviceAccount:baakio-vm@baakio-513506.iam.gserviceaccount.com" \
+  --role=roles/secretmanager.secretAccessor
+```
 
 | Secret | Value |
 | --- | --- |
