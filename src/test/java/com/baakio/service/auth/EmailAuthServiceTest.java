@@ -52,7 +52,7 @@ class EmailAuthServiceTest {
 
         ApiException error = assertThrows(ApiException.class,
                 () -> service.signIn(request, EmailOtpPurpose.REGISTER));
-        assertEquals("ACCOUNT_LINK_REQUIRED", error.code());
+        assertEquals("EMAIL_ALREADY_REGISTERED", error.code());
         verify(holders, never()).saveAndFlush(any());
     }
 

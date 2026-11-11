@@ -88,6 +88,12 @@ class EmailAuthenticationFlowTest {
                 .andExpect(status().isOk()).andReturn();
         assertEquals(email, json.readTree(registration.getResponse().getContentAsString())
                 .path("accountHolder").path("email").asText());
+        var duplicateRegistration = mvc.perform(post("/api/v1/auth/email/request").with(csrf())
+                        .contentType("application/json")
+                        .content("{\"email\":\"" + email + "\",\"purpose\":\"REGISTER\"}"))
+                .andExpect(status().isConflict()).andReturn();
+        assertEquals("EMAIL_ALREADY_REGISTERED", json.readTree(duplicateRegistration.getResponse().getContentAsString())
+                .path("code").asText());
         var sessionCookie = registration.getResponse().getCookie("SESSION");
         assertNotNull(sessionCookie);
         mvc.perform(get("/api/v1/account-holder").cookie(sessionCookie))

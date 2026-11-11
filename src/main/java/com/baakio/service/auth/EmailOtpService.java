@@ -7,6 +7,8 @@ import com.baakio.exception.ApiException;
 import com.baakio.model.EmailOtpChallenge;
 import com.baakio.notification.NotificationMessage;
 import com.baakio.notification.service.NotificationDispatcher;
+import com.baakio.repository.AccountHolderRepository;
+import com.baakio.repository.AccountIdentityRepository;
 import com.baakio.repository.EmailOtpChallengeRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -27,6 +29,8 @@ import java.util.UUID;
 @Service
 public class EmailOtpService {
     private final EmailOtpChallengeRepository challenges;
+    private final AccountHolderRepository accountHolders;
+    private final AccountIdentityRepository identities;
     private final OtpCodeGenerator codeGenerator;
     private final NotificationDispatcher notifications;
     private final String hashSecret;
@@ -38,7 +42,8 @@ public class EmailOtpService {
     private final int dailyLimit;
     private final int attemptLimit;
 
-    public EmailOtpService(EmailOtpChallengeRepository challenges, OtpCodeGenerator codeGenerator,
+    public EmailOtpService(EmailOtpChallengeRepository challenges, AccountHolderRepository accountHolders,
+            AccountIdentityRepository identities, OtpCodeGenerator codeGenerator,
             NotificationDispatcher notifications,
             @Value("${baakio.auth.otp.hash-secret}") String hashSecret,
             @Value("${baakio.auth.email.enabled}") boolean enabled,
@@ -49,6 +54,8 @@ public class EmailOtpService {
             @Value("${baakio.auth.email.max-requests-per-day:80}") int dailyLimit,
             @Value("${baakio.auth.otp.max-attempts}") int attemptLimit) {
         this.challenges = challenges;
+        this.accountHolders = accountHolders;
+        this.identities = identities;
         this.codeGenerator = codeGenerator;
         this.notifications = notifications;
         this.hashSecret = hashSecret;
@@ -69,6 +76,12 @@ public class EmailOtpService {
     public OtpRequestResponse request(String rawEmail, EmailOtpPurpose purpose, String locale) {
         requireEnabled();
         String email = normalize(rawEmail);
+        if (purpose == EmailOtpPurpose.REGISTER
+                && (accountHolders.existsByEmailIgnoreCase(email)
+                || identities.accountHolderId("EMAIL", email).isPresent())) {
+            throw new ApiException(HttpStatus.CONFLICT, "EMAIL_ALREADY_REGISTERED",
+                    "An account already exists with this email. Sign in instead.");
+        }
         challenges.acquireGlobalRequestLock();
         challenges.acquireRequestLock(email);
         Instant now = Instant.now();

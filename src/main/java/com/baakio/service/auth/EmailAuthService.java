@@ -50,8 +50,7 @@ public class EmailAuthService {
             return accountHolderService.principalById(existingId);
         }
         if (existingId != null || accountHolders.existsByEmailIgnoreCase(email)) {
-            throw new ApiException(HttpStatus.CONFLICT, "ACCOUNT_LINK_REQUIRED",
-                    "This email already belongs to an account. Sign in and link it from settings.");
+            throw emailAlreadyRegistered();
         }
         if (request.businessName() == null || request.businessName().isBlank()
                 || request.displayName() == null || request.displayName().isBlank()) {
@@ -69,7 +68,7 @@ public class EmailAuthService {
             events.publishEvent(new ShopCreatedEvent(id, email, request.displayName().trim(),
                     request.businessName().trim(), locale));
         } catch (DataIntegrityViolationException exception) {
-            throw new ApiException(HttpStatus.CONFLICT, "ACCOUNT_LINK_REQUIRED", "This email already belongs to an account.");
+            throw emailAlreadyRegistered();
         }
         return accountHolderService.principalById(id);
     }
@@ -98,5 +97,10 @@ public class EmailAuthService {
     private ApiException invalidCode() {
         return new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_OR_EXPIRED_OTP",
                 "The code is invalid or expired. Request another code.");
+    }
+
+    private ApiException emailAlreadyRegistered() {
+        return new ApiException(HttpStatus.CONFLICT, "EMAIL_ALREADY_REGISTERED",
+                "An account already exists with this email. Sign in instead.");
     }
 }
