@@ -35,7 +35,8 @@ public class SecurityConfig {
             .securityContext(context -> context.securityContextRepository(contextRepository))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health", "/api/v1/csrf", "/api/v1/auth/otp/request",
+                .requestMatchers("/actuator/health", "/actuator/health/**", "/api/v1/csrf",
+                        "/api/v1/auth/otp/request",
                         "/api/v1/auth/login", "/api/v1/auth/register",
                         "/api/v1/auth/config", "/api/v1/auth/google",
                         "/api/v1/auth/email/request", "/api/v1/auth/email/login",

@@ -50,7 +50,7 @@ docker compose --env-file runtime.env -f compose.yaml up -d --remove-orphans
 
 ready=false
 for attempt in {1..90}; do
-  if curl --silent --fail --max-time 3 http://127.0.0.1:8080/actuator/health \
+  if curl --silent --fail --max-time 3 http://127.0.0.1:8080/actuator/health/readiness \
       | grep -q '"status":"UP"'; then
     ready=true
     break
@@ -59,8 +59,28 @@ for attempt in {1..90}; do
 done
 
 if [[ $ready != true ]]; then
+  echo 'Readiness probe response:' >&2
+  if ! curl --silent --show-error --max-time 5 http://127.0.0.1:8080/actuator/health/readiness >&2; then
+    echo 'Could not retrieve the readiness probe response.' >&2
+  fi
+  echo >&2
   docker compose --env-file runtime.env -f compose.yaml ps >&2
-  echo 'New release failed its health check.' >&2
+  while IFS= read -r container; do
+    [[ -n $container ]] || continue
+    if ! docker inspect --format='{{.Name}} state={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' "$container" >&2; then
+      echo "Could not inspect container $container." >&2
+    fi
+  done < <(docker compose --env-file runtime.env -f compose.yaml ps -q)
+  diagnostics=/var/log/baakio-release-failure.log
+  if install -d -m 0700 /var/log/baakio \
+      && docker compose --env-file runtime.env -f compose.yaml logs --no-color --tail=80 \
+          api cloud-sql-proxy rabbitmq >"$diagnostics" 2>&1; then
+    chmod 0600 "$diagnostics"
+    echo "Bounded service logs saved on the VM at $diagnostics (root-only)." >&2
+  else
+    echo 'Could not save bounded service logs on the VM.' >&2
+  fi
+  echo 'New release failed its readiness check.' >&2
   rollback 1
 fi
 

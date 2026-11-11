@@ -144,7 +144,10 @@ Caddy has obtained a public certificate. On 2 November 2026,
 `https://api.baakio.shop/api/v1/auth/config` returned HTTP 200,
 `/api/v1/csrf` returned HTTP 200 with a Secure cookie, the production origins
 passed CORS checks, and the public `/actuator/health` route returned 404 as
-configured. The Vercel storefront returned HTTP 200 at
+configured. The release gate checks the local `/actuator/health/readiness`
+probe; on failure it records the probe response and container state in the
+deployment output, and saves bounded service logs to a root-only file on the
+VM before rollback. The Vercel storefront returned HTTP 200 at
 `https://www.baakio.shop`; the apex redirects there.
 
 Perform a browser check from `https://baakio.shop`: Google sign-in and email
