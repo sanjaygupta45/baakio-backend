@@ -1,4 +1,4 @@
-# Baakio API
+# Baakio Backend 
 
 **A reliable ledger behind Baakio's customer credit experience.**
 
