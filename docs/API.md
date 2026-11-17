@@ -29,9 +29,9 @@ All routes use `/api/v1`. CSRF bootstrap, authentication config, Google and emai
 | POST | `/commitments/{id}/reschedule` | Append a date revision |
 | GET | `/dashboard` | Total, due today, overdue, and follow-up customers |
 | POST | `/customers/{id}/reminder-preview` | Server-derived English/Hindi WhatsApp preview |
-| POST | `/customers/{id}/scans` | Upload one JPEG/PNG/WebP bill as multipart `file`; returns `202 Accepted` with `scanId` |
+| POST | `/customers/{id}/scans` | Upload one JPEG, PNG, WebP, or PDF bill up to 10 MB as multipart `file`. Returns `202 Accepted` with `scanId`. |
 | GET | `/scans/{id}` | Tenant-scoped scan status and reviewable draft |
-| GET | `/scans/{id}/image` | Tenant-authorized original bill image; `Cache-Control: no-store` |
+| GET | `/scans/{id}/image` | Tenant-authorized original bill file with its detected media type and `Cache-Control: no-store`. PDFs are served as downloads. |
 | POST | `/scans/{id}/confirm` | Confirm edited lines and draft `version` with an `Idempotency-Key`; posts through normal purchase rules |
 
-Scan upload requires `Idempotency-Key`; the multipart form may include `keepAttachment=true` to retain the original image beyond its review period. Status and image requests return 404 when the scan belongs to another business.
+Scan upload requires `Idempotency-Key`. The multipart form may include `keepAttachment=true` to retain the original file beyond its review period. Status and original-file requests return 404 when the scan belongs to another business.

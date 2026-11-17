@@ -15,6 +15,7 @@ import java.util.Map;
 public class OpenRouterScanExtractor implements ScanExtractor {
     private static final String EXTRACTION_PROMPT = """
             Read this single customer purchase bill for an Indian neighbourhood shop.
+            Read all pages in order if this is a multi-page bill.
             Return JSON fields is_new_purchase, occurred_on (ISO yyyy-MM-dd or null), description,
             discount (decimal string or null), written_total (decimal string or null), and items.
             Each item must contain name, quantity, unit, unit_price, written_line_total,
@@ -49,13 +50,15 @@ public class OpenRouterScanExtractor implements ScanExtractor {
             throw new IllegalStateException("OpenRouter bill scanning is not configured.");
         }
         String dataUrl = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(content);
+        Map<String, Object> bill = MediaType.APPLICATION_PDF_VALUE.equals(mimeType)
+                ? Map.of("type", "file", "file", Map.of("filename", "source-bill.pdf", "file_data", dataUrl))
+                : Map.of("type", "image_url", "image_url", Map.of("url", dataUrl));
         Map<String, Object> body = Map.of(
                 "model", model,
                 "messages", List.of(Map.of(
                         "role", "user",
                         "content", List.of(
-                                Map.of("type", "text", "text", EXTRACTION_PROMPT),
-                                Map.of("type", "image_url", "image_url", Map.of("url", dataUrl))))),
+                                Map.of("type", "text", "text", EXTRACTION_PROMPT), bill))),
                 "response_format", Map.of("type", "json_object"),
                 "max_tokens", 2048,
                 "temperature", 0);

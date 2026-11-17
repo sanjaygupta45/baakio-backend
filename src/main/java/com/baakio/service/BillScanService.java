@@ -22,13 +22,14 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
@@ -39,7 +40,7 @@ import java.util.UUID;
 
 @Service
 public class BillScanService {
-    private static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
+    private static final long MAX_FILE_BYTES = 10L * 1024 * 1024;
     private static final int MAX_IMAGE_DIMENSION = 10_000;
     private final ScanPersistenceService scans;
     private final CustomerService customers;
@@ -63,9 +64,11 @@ public class BillScanService {
                                      boolean keepAttachment, String key) {
         validateKey(key);
         customers.ensureOwned(principal.businessId(), customerId);
-        byte[] content = readAndValidate(file);
+        byte[] content = readUpload(file);
         String mimeType = detectMime(content);
-        validateImageDimensions(content);
+        if (!MediaType.APPLICATION_PDF_VALUE.equals(mimeType)) {
+            validateImageDimensions(content);
+        }
         String hash = sha256(content);
         Optional<Long> previousId = scans.findUploadByKey(principal.businessId(), key);
         if (previousId.isPresent()) {
@@ -171,16 +174,21 @@ public class BillScanService {
         return posted;
     }
 
-    private byte[] readAndValidate(MultipartFile file) {
-        if (file == null || file.isEmpty()) throw new ApiException(HttpStatus.BAD_REQUEST, "SCAN_IMAGE_REQUIRED", "Choose one bill image to upload.");
-        if (file.getSize() > MAX_IMAGE_BYTES) throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "SCAN_IMAGE_TOO_LARGE", "Choose an image smaller than 10 MB.");
+    private byte[] readUpload(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "SCAN_IMAGE_REQUIRED", "Choose one bill image or PDF to upload.");
+        }
+        if (file.getSize() > MAX_FILE_BYTES) {
+            throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "SCAN_IMAGE_TOO_LARGE", "Choose a bill file up to 10 MB.");
+        }
         try {
             byte[] content = file.getBytes();
-            if (content.length == 0 || content.length > MAX_IMAGE_BYTES) throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "SCAN_IMAGE_TOO_LARGE", "Choose an image smaller than 10 MB.");
-            detectMime(content);
+            if (content.length > MAX_FILE_BYTES) {
+                throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "SCAN_IMAGE_TOO_LARGE", "Choose a bill file up to 10 MB.");
+            }
             return content;
         } catch (IOException exception) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "SCAN_IMAGE_READ_FAILED", "The bill image could not be read. Choose it again.");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "SCAN_IMAGE_READ_FAILED", "The bill file could not be read. Choose it again.");
         }
     }
 
@@ -190,9 +198,13 @@ public class BillScanService {
                 && content[5] == 0x0a && content[6] == 0x1a && content[7] == 0x0a) return "image/png";
         if (content.length >= 3 && (content[0] & 0xff) == 0xff && (content[1] & 0xff) == 0xd8
                 && (content[2] & 0xff) == 0xff) return "image/jpeg";
-        if (content.length >= 12 && new String(content, 0, 4, java.nio.charset.StandardCharsets.US_ASCII).equals("RIFF")
-                && new String(content, 8, 4, java.nio.charset.StandardCharsets.US_ASCII).equals("WEBP")) return "image/webp";
-        throw new ApiException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "SCAN_IMAGE_TYPE_UNSUPPORTED", "Upload a JPEG, PNG, or WebP image.");
+        if (content.length >= 12 && new String(content, 0, 4, StandardCharsets.US_ASCII).equals("RIFF")
+                && new String(content, 8, 4, StandardCharsets.US_ASCII).equals("WEBP")) return "image/webp";
+        if (content.length >= 8 && new String(content, 0, 5, StandardCharsets.US_ASCII).equals("%PDF-")) {
+            return MediaType.APPLICATION_PDF_VALUE;
+        }
+        throw new ApiException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "SCAN_IMAGE_TYPE_UNSUPPORTED",
+                "Upload a JPEG, PNG, or WebP image, or a PDF.");
     }
 
     private void validateImageDimensions(byte[] content) {
@@ -219,7 +231,7 @@ public class BillScanService {
 
     private String sha256(byte[] content) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content)); }
-        catch (Exception exception) { throw new IllegalStateException("Image fingerprint is unavailable.", exception); }
+        catch (Exception exception) { throw new IllegalStateException("Bill file fingerprint is unavailable.", exception); }
     }
 
     private void validateKey(String key) {
