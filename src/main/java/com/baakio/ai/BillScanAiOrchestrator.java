@@ -20,8 +20,8 @@ public class BillScanAiOrchestrator {
         this.mapper = mapper;
     }
 
-    public ScanAiResult prepareDraft(byte[] image, String mimeType) throws InterruptedException {
-        ScanExtraction extraction = extractWithRetry(image, mimeType);
+    public ScanAiResult prepareDraft(byte[] content, String mimeType) throws InterruptedException {
+        ScanExtraction extraction = extractWithRetry(content, mimeType);
         ScanDraft draft = drafts.create(extraction);
         try {
             return new ScanAiResult(mapper.writeValueAsString(extraction), draft,
@@ -32,11 +32,11 @@ public class BillScanAiOrchestrator {
         }
     }
 
-    private ScanExtraction extractWithRetry(byte[] image, String mimeType) throws InterruptedException {
+    private ScanExtraction extractWithRetry(byte[] content, String mimeType) throws InterruptedException {
         RuntimeException last = null;
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                return extractor.extract(image, mimeType);
+                return extractor.extract(content, mimeType);
             } catch (ApiException exception) {
                 throw exception;
             } catch (RuntimeException exception) {

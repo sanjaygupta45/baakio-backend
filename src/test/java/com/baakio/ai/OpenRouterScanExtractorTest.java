@@ -12,12 +12,36 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class OpenRouterScanExtractorTest {
     private static final String BASE_URL = "https://openrouter.ai/api/v1";
+
+    @Test
+    void sendsPdfAsAnOpenRouterFilePart() {
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        OpenRouterScanExtractor extractor = extractor(builder, "test-key");
+        server.expect(requestTo(BASE_URL + "/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.messages[0].content[1].type").value("file"))
+                .andExpect(jsonPath("$.messages[0].content[1].file.filename").value("source-bill.pdf"))
+                .andExpect(jsonPath("$.messages[0].content[1].file.file_data").value("data:application/pdf;base64,JVBERi0xLjc="))
+                .andExpect(jsonPath("$.messages[0].content[1].image_url").doesNotExist())
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"is_new_purchase\\":true,\\"written_total\\":\\"125.00\\",\\"items\\":[]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        ScanExtraction extraction = extractor.extract("%PDF-1.7".getBytes(java.nio.charset.StandardCharsets.US_ASCII),
+                MediaType.APPLICATION_PDF_VALUE);
+
+        assertTrue(extraction.isNewPurchase());
+        assertEquals("125.00", extraction.writtenTotal());
+        server.verify();
+    }
 
     @Test
     void sendsBillImageToOpenRouterAndMapsStructuredResponse() {

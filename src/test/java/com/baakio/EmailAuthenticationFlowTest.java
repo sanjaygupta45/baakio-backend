@@ -13,6 +13,8 @@ import com.baakio.service.auth.GoogleIdentityVerifier;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,6 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -40,6 +43,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
@@ -127,15 +132,17 @@ class EmailAuthenticationFlowTest {
                 .andExpect(status().isOk());
     }
 
-    @Test
-    void billUploadReviewAndConfirmationCreatePurchaseInCustomerAccount() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"image/png", "application/pdf"})
+    void billUploadReviewAndConfirmationCreatePurchaseInCustomerAccount(String mimeType) throws Exception {
         jdbc.execute("CREATE TABLE IF NOT EXISTS account_identity (provider VARCHAR(20) NOT NULL, "
                 + "subject VARCHAR(255) NOT NULL, account_holder_id CHAR(36) NOT NULL, "
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (provider, subject))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS email_otp_global_lock (id TINYINT PRIMARY KEY)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS email_otp_request_lock (email VARCHAR(190) PRIMARY KEY)");
 
-        String email = "bill-scan-flow@example.com";
+        boolean pdf = "application/pdf".equals(mimeType);
+        String email = pdf ? "pdf-scan-flow@example.com" : "image-scan-flow@example.com";
         JsonNode code = requestCode(email, "REGISTER");
         String registrationBody = "{\"email\":\"" + email + "\",\"challengeId\":\""
                 + code.get("challengeId").asText() + "\",\"otp\":\""
@@ -160,16 +167,16 @@ class EmailAuthenticationFlowTest {
         jdbc.execute("ALTER TABLE audit_event ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP");
         jdbc.execute("ALTER TABLE idempotency_record ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP");
 
-        byte[] image = pngImage();
+        byte[] bill = pdf ? "%PDF-1.7\n%%EOF\n".getBytes(StandardCharsets.US_ASCII) : pngImage();
         var uploaded = mvc.perform(multipart("/api/v1/customers/" + customerId + "/scans")
-                        .file(new MockMultipartFile("file", "bill.png", "image/png", image))
+                        .file(new MockMultipartFile("file", "bill", "application/octet-stream", bill))
                         .param("keepAttachment", "true")
                         .header("Idempotency-Key", "bill-scan-upload-1")
                         .with(csrf()).cookie(session))
                 .andExpect(status().isAccepted()).andReturn();
         long scanId = json.readTree(uploaded.getResponse().getContentAsString()).path("scanId").asLong();
 
-        when(scanExtractor.extract(any(byte[].class), eq("image/png"))).thenReturn(
+        when(scanExtractor.extract(any(byte[].class), eq(mimeType))).thenReturn(
                 new ScanExtraction(true, "2026-09-20", "Test bill", "0.00", "20.00",
                         java.util.List.of(new ScanExtractionLine("Flour", "2", "kg", "10.00", "20.00",
                                 0.99, 0.99, 0.99))));
@@ -184,7 +191,10 @@ class EmailAuthenticationFlowTest {
 
         mvc.perform(get("/api/v1/scans/" + scanId + "/image").cookie(session))
                 .andExpect(status().isOk())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().bytes(image));
+                .andExpect(content().contentType(mimeType))
+                .andExpect(header().string("Content-Disposition",
+                        pdf ? "attachment; filename=source-bill.pdf" : "inline; filename=source-bill"))
+                .andExpect(content().bytes(bill));
 
         String confirmation = "{\"version\":1,\"occurredOn\":\"2026-09-20\",\"description\":\"Test bill\","
                 + "\"discount\":\"0.00\",\"lines\":[{\"name\":\"Flour\",\"quantity\":\"2\","

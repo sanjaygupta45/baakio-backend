@@ -32,7 +32,7 @@ public class ScanController {
 
     @PostMapping(value = "/customers/{customerId}/scans", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ScanUploadResponse> upload(@AuthenticationPrincipal AccountHolderPrincipal principal,
-            @PathVariable long customerId, @RequestPart("file") MultipartFile file,
+            @PathVariable long customerId, @RequestPart(value = "file", required = false) MultipartFile file,
             @RequestParam(defaultValue = "false") boolean keepAttachment,
             @RequestHeader("Idempotency-Key") String key) {
         return ResponseEntity.accepted().body(scans.upload(principal, customerId, file, keepAttachment, key));
@@ -45,12 +45,15 @@ public class ScanController {
     }
 
     @GetMapping("/scans/{scanId}/image")
-    public ResponseEntity<byte[]> image(@AuthenticationPrincipal AccountHolderPrincipal principal,
-                                        @PathVariable long scanId) {
+    public ResponseEntity<byte[]> source(@AuthenticationPrincipal AccountHolderPrincipal principal,
+                                         @PathVariable long scanId) {
         StoredDocument document = scans.source(principal, scanId);
-        return ResponseEntity.ok().contentType(MediaType.parseMediaType(document.contentType()))
+        MediaType contentType = MediaType.parseMediaType(document.contentType());
+        String disposition = MediaType.APPLICATION_PDF.equals(contentType)
+                ? "attachment; filename=source-bill.pdf" : "inline; filename=source-bill";
+        return ResponseEntity.ok().contentType(contentType)
                 .cacheControl(CacheControl.noStore()).header("X-Content-Type-Options", "nosniff")
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=source-bill")
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
                 .body(document.content());
     }
 

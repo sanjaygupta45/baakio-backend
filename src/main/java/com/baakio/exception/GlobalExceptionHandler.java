@@ -16,6 +16,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.net.URI;
@@ -48,6 +49,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     ResponseEntity<ProblemDetail> unsupportedMediaType(HttpMediaTypeNotSupportedException exception, HttpServletRequest request) {
         return problem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_MEDIA_TYPE", "The request content type is not supported.", request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ProblemDetail> uploadTooLarge(MaxUploadSizeExceededException exception, HttpServletRequest request) {
+        return problem(HttpStatus.PAYLOAD_TOO_LARGE, "SCAN_IMAGE_TOO_LARGE", "Choose a bill file up to 10 MB.", request);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

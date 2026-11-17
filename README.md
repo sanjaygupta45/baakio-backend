@@ -10,7 +10,7 @@
 | --- | --- |
 | Know the real balance after repeat purchases and part payments | Customer ledger with opening balances, quick or itemized purchases, confirmed payments, and dated statements. |
 | Remember who promised to pay | Payment commitments with due dates, reschedule history, allocations, and prioritized follow-ups. |
-| Enter a handwritten bill faster | Private image upload → asynchronous OCR → editable draft → owner-confirmed purchase. |
+| Enter a handwritten bill faster | Private image or PDF upload → asynchronous OCR → editable draft → owner-confirmed purchase. |
 | Explain a balance to a customer | Date-range statement data and English/Hindi WhatsApp reminder previews, with confirmed UPI details when available. |
 | Keep records separate and trustworthy | Business-scoped access, passwordless sign-in, server-side sessions, CSRF checks, and idempotent financial writes. |
 
@@ -35,14 +35,14 @@ flowchart LR
 
 **Stack:** Java 21 · Spring Boot 4 · Spring Security · Hibernate/JPA · Flyway · MySQL 8.4 · RabbitMQ. MySQL holds the financial source of truth; Redis is not used for balance decisions.
 
-## AI scan: image to confirmed purchase
+## AI bill scanning
 
 ```mermaid
 flowchart TD
-    A[Owner uploads bill image] --> B[Validate image and store privately]
+    A[Owner uploads image or PDF] --> B[Validate file and store privately]
     B --> C[MySQL: scan job + outbox event]
     C --> D[Outbox relay publishes to RabbitMQ]
-    D --> E[Worker reads image and calls OpenRouter]
+    D --> E[Worker sends bill to OpenRouter]
     E --> F{Usable new purchase?}
     F -->|No| X[Failed scan: manual entry available]
     F -->|Yes| G[Editable draft with uncertainty flags]
@@ -52,11 +52,11 @@ flowchart TD
     J --> K[Updated customer balance]
 ```
 
-- **Input:** One JPEG, PNG, or WebP image up to 10 MB. The original stays in private Cloud Storage; image and scan access are scoped to the business.
+- **Input:** One JPEG, PNG, WebP, or PDF file up to 10 MB. The original is stored in private Cloud Storage and available to the owning business. OpenRouter uses its PDF OCR fallback when the configured model cannot read PDFs directly.
 - **Reliable queue:** The scan job and outbox event commit together. The relay marks delivery only after RabbitMQ confirms routing. Stale worker claims can be retried.
 - **Review, not blind automation:** OCR proposes structured fields. The server rejects non-purchase documents, flags uncertain values or total mismatches, and recalculates item totals with `BigDecimal`.
 - **One financial write:** Upload and extraction do not change debt. The owner edits the draft and confirms it; version checks and idempotency guard the final posting. Any payment on the bill needs explicit confirmation.
-- **Retention:** Unkept source images are deleted after 30 days by default. Manual purchase entry remains available if extraction fails.
+- **Retention:** Source files are deleted after 30 days by default unless the owner chooses to keep them. Manual purchase entry remains available if extraction fails.
 
 ## Ledger safeguards
 
